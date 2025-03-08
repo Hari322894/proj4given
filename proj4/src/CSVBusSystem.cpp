@@ -1,15 +1,15 @@
-#include "CSVBusSystem.h"  // This includes the class definition for CCSVBusSystem
-#include "DSVReader.h"    // Reading CSV (or other DSV) formatted input files
-#include <memory>           // Provides std::shared_ptr and std::make_shared for memory management
-#include <vector>           // Used to store lists of stops and routes
-#include <string>           // Enables usage of std::string for the route name and attribute
-#include <unordered_map>    // Lookup of stops and routes by ID or name using unordered_map
-#include <iostream>         // For printing bus system details using operator <<
+#include "CSVBusSystem.h"
+#include "DSVReader.h"
+#include <memory>
+#include <vector>
+#include <string>
+#include <unordered_map>
+#include <iostream>
 
-class CCSVBusSystem::SStop : public CBusSystem::SStop {
+class CSVStop : public CBusSystem::SStop {
 public:
-    TStopID StopID;  // Unique identifier for the stop
-    CStreetMap::TNodeID NodeIDValue;  // Corresponding node ID in the street map
+    TStopID StopID;  
+    CStreetMap::TNodeID NodeIDValue;
 
     TStopID ID() const noexcept override {
         return StopID;
@@ -20,10 +20,10 @@ public:
     }
 };
 
-class CCSVBusSystem::SRoute : public CBusSystem::SRoute {
+class CSVRoute : public CBusSystem::SRoute {
 public:
-    std::string RouteName;  // Name of the route
-    std::vector<TStopID> RouteStops;  // List of stop IDs forming the route
+    std::string RouteName;  
+    std::vector<TStopID> RouteStops;
 
     std::string Name() const noexcept override {
         return RouteName;
@@ -46,10 +46,10 @@ public:
 };
 
 struct CCSVBusSystem::SImplementation {
-    std::vector<std::shared_ptr<SStop>> StopsByIndex;
-    std::unordered_map<TStopID, std::shared_ptr<SStop>> Stops;
-    std::vector<std::shared_ptr<SRoute>> RoutesByIndex;
-    std::unordered_map<std::string, std::shared_ptr<SRoute>> Routes;
+    std::vector<std::shared_ptr<CSVStop>> StopsByIndex;
+    std::unordered_map<TStopID, std::shared_ptr<CSVStop>> Stops;
+    std::vector<std::shared_ptr<CSVRoute>> RoutesByIndex;
+    std::unordered_map<std::string, std::shared_ptr<CSVRoute>> Routes;
 };
 
 CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_ptr<CDSVReader> routesrc) {
@@ -60,7 +60,7 @@ CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_pt
         while (stopsrc->ReadRow(row)) {
             if (row.size() >= 2) {
                 try {
-                    auto stop = std::make_shared<SStop>();
+                    auto stop = std::make_shared<CSVStop>();
                     stop->StopID = std::stoul(row[0]);
                     stop->NodeIDValue = std::stoul(row[1]);
                     DImplementation->Stops[stop->StopID] = stop;
@@ -73,7 +73,7 @@ CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_pt
     }
 
     if (routesrc) {
-        std::unordered_map<std::string, std::shared_ptr<SRoute>> tempRoutes;
+        std::unordered_map<std::string, std::shared_ptr<CSVRoute>> tempRoutes;
         while (routesrc->ReadRow(row)) {
             if (row.size() >= 2) {
                 try {
@@ -81,7 +81,7 @@ CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_pt
                     TStopID stopID = std::stoul(row[1]);
                     auto& route = tempRoutes[routeName];
                     if (!route) {
-                        route = std::make_shared<SRoute>();
+                        route = std::make_shared<CSVRoute>();
                         route->RouteName = routeName;
                     }
                     route->AddStop(stopID);
