@@ -221,7 +221,14 @@ struct CDijkstraTransportationPlanner::SImplementation{
         
         std::unordered_map<CTransportationPlanner::TNodeID, double> ShortestTime;
         std::unordered_map<CTransportationPlanner::TNodeID, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>> Previous;
-        std::unordered_set<CTransportationPlanner::TNodeID> Visited;
+        
+        // FIX: Create a set to track visited node+mode combinations to prevent infinite loops
+        std::unordered_set<std::string> VisitedStates;
+        
+        // Helper function to create a unique key for node+mode combinations
+        auto CreateStateKey = [](CTransportationPlanner::TNodeID node, CTransportationPlanner::ETransportationMode mode) -> std::string {
+            return std::to_string(node) + "-" + std::to_string(static_cast<int>(mode));
+        };
         
         // Initialize sources with different modes
         PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Walking, src}});
@@ -242,11 +249,14 @@ struct CDijkstraTransportationPlanner::SImplementation{
             auto CurrentMode = std::get<1>(TimeTuple.second);
             auto PreviousIndex = std::get<2>(TimeTuple.second);
             
-            // Skip if we already found a shorter path to this node with this mode
-            std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID> StateKey = {CurrentIndex, CurrentMode, PreviousIndex};
-            if(Visited.find(CurrentIndex) != Visited.end()){
+            // FIX: Skip if we already visited this node with this mode
+            std::string StateKey = CreateStateKey(CurrentIndex, CurrentMode);
+            if(VisitedStates.find(StateKey) != VisitedStates.end()){
                 continue;
             }
+            
+            // FIX: Mark this node+mode combination as visited
+            VisitedStates.insert(StateKey);
             
             // If we've reached the destination, we're done
             if(CurrentIndex == dest){
@@ -268,8 +278,6 @@ struct CDijkstraTransportationPlanner::SImplementation{
                 std::reverse(path.begin(), path.end());
                 return CurrentTime;
             }
-            
-            Visited.insert(CurrentIndex);
             
             // Consider all neighbors based on the current mode
             if(CurrentMode == CTransportationPlanner::ETransportationMode::Walking){
@@ -298,14 +306,20 @@ struct CDijkstraTransportationPlanner::SImplementation{
                     }
                 }
                 
-                // Try switching to biking
-                PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                // Try switching to biking (FIX: Only if not already visited with biking mode)
+                std::string BikingStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Biking);
+                if(VisitedStates.find(BikingStateKey) == VisitedStates.end()){
+                    PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                }
                 
-                // Try switching to bus (if at a bus stop)
-                for(size_t Index = 0; Index < DBusStops.size(); Index++){
-                    if(Index + DStreetMapNodes.size() == CurrentIndex){
-                        PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
-                        break;
+                // Try switching to bus (if at a bus stop) (FIX: Only if not already visited with bus mode)
+                std::string BusStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Bus);
+                if(VisitedStates.find(BusStateKey) == VisitedStates.end()){
+                    for(size_t Index = 0; Index < DBusStops.size(); Index++){
+                        if(Index + DStreetMapNodes.size() == CurrentIndex){
+                            PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                            break;
+                        }
                     }
                 }
             }
@@ -335,8 +349,11 @@ struct CDijkstraTransportationPlanner::SImplementation{
                     }
                 }
                 
-                // Try switching to walking
-                PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                // Try switching to walking (FIX: Only if not already visited with walking mode)
+                std::string WalkingStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Walking);
+                if(VisitedStates.find(WalkingStateKey) == VisitedStates.end()){
+                    PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                }
             }
             else if(CurrentMode == CTransportationPlanner::ETransportationMode::Bus){
                 // Try bus routes
@@ -364,8 +381,11 @@ struct CDijkstraTransportationPlanner::SImplementation{
                     }
                 }
                 
-                // Try switching to walking
-                PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                // Try switching to walking (FIX: Only if not already visited with walking mode)
+                std::string WalkingStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Walking);
+                if(VisitedStates.find(WalkingStateKey) == VisitedStates.end()){
+                    PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                }
             }
         }
         
