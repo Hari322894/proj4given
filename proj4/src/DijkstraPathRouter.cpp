@@ -4,151 +4,143 @@
 #include <limits>
 #include <algorithm>
 
-// Implementation structure for Dijkstra Path Router
 struct CDijkstraPathRouter::SImplementation {
     struct SVertex {
         TVertexID ID;
         std::any Tag;
-        std::unordered_map<TVertexID, double> Edges;
+        std::unordered_map<TVertexID, double> Edges; // Maps to destination vertex ID and edge weight
     };
     
-    std::unordered_map<TVertexID, SVertex> DVertices;
-    TVertexID DNextID = 0;
+    std::vector<SVertex> DVertices;
     
-    // Helper method to implement Dijkstra's algorithm
-    double DijkstraSearch(TVertexID src, TVertexID dest, std::vector<TVertexID>& path) {
-        // Initialize data structures
-        std::unordered_map<TVertexID, double> distances;
-        std::unordered_map<TVertexID, TVertexID> previous;
-        std::priority_queue<std::pair<double, TVertexID>, 
-                            std::vector<std::pair<double, TVertexID>>,
-                            std::greater<std::pair<double, TVertexID>>> queue;
+    SImplementation() = default;
+    
+    struct SDistanceVertexPair {
+        double Distance;
+        TVertexID VertexID;
         
-        // Initialize all distances as infinite
-        for (const auto& vertex : DVertices) {
-            distances[vertex.first] = std::numeric_limits<double>::infinity();
+        bool operator>(const SDistanceVertexPair& other) const {
+            return Distance > other.Distance;
         }
-        
-        // Distance to source is 0
-        distances[src] = 0.0;
-        queue.push({0.0, src});
-        
-        // Process vertices
-        while (!queue.empty()) {
-            auto current = queue.top().second;
-            auto currentDistance = queue.top().first;
-            queue.pop();
-            
-            // If we reached destination, break
-            if (current == dest) {
-                break;
-            }
-            
-            // Skip if we already found a better path
-            if (currentDistance > distances[current]) {
-                continue;
-            }
-            
-            // Check all neighbors
-            for (const auto& edge : DVertices[current].Edges) {
-                auto neighbor = edge.first;
-                auto weight = edge.second;
-                auto newDistance = distances[current] + weight;
-                
-                // If we found a better path
-                if (newDistance < distances[neighbor]) {
-                    distances[neighbor] = newDistance;
-                    previous[neighbor] = current;
-                    queue.push({newDistance, neighbor});
-                }
-            }
-        }
-        
-        // Check if path exists
-        if (distances[dest] == std::numeric_limits<double>::infinity()) {
-            return CPathRouter::NoPathExists;
-        }
-        
-        // Reconstruct path
-        path.clear();
-        TVertexID current = dest;
-        while (current != src) {
-            path.push_back(current);
-            current = previous[current];
-        }
-        path.push_back(src);
-        
-        // Reverse to get path from src to dest
-        std::reverse(path.begin(), path.end());
-        
-        return distances[dest];
-    }
+    };
 };
 
-// Constructor implementation
-CDijkstraPathRouter::CDijkstraPathRouter() {
-    DImplementation = std::make_unique<SImplementation>();
+CDijkstraPathRouter::CDijkstraPathRouter() 
+    : DImplementation(std::make_unique<SImplementation>()) {
 }
 
-// Destructor implementation
-CDijkstraPathRouter::~CDijkstraPathRouter() {
-}
+CDijkstraPathRouter::~CDijkstraPathRouter() = default;
 
-// Returns the number of vertices in the path router
 std::size_t CDijkstraPathRouter::VertexCount() const noexcept {
     return DImplementation->DVertices.size();
 }
 
-// Adds a vertex with the provided tag
 CPathRouter::TVertexID CDijkstraPathRouter::AddVertex(std::any tag) noexcept {
-    TVertexID newID = DImplementation->DNextID++;
-    DImplementation->DVertices[newID] = {newID, tag, {}};
-    return newID;
+    SImplementation::SVertex newVertex;
+    newVertex.ID = DImplementation->DVertices.size();
+    newVertex.Tag = tag;
+    
+    DImplementation->DVertices.push_back(newVertex);
+    return newVertex.ID;
 }
 
-// Gets the tag of the vertex specified by id
 std::any CDijkstraPathRouter::GetVertexTag(TVertexID id) const noexcept {
-    auto it = DImplementation->DVertices.find(id);
-    if (it == DImplementation->DVertices.end()) {
-        return std::any();
+    if(id < DImplementation->DVertices.size()) {
+        return DImplementation->DVertices[id].Tag;
     }
-    return it->second.Tag;
+    return std::any();
 }
 
-// Adds an edge between src and dest vertices
 bool CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir) noexcept {
-    // Check if vertices exist and weight is valid
-    if (DImplementation->DVertices.find(src) == DImplementation->DVertices.end() ||
-        DImplementation->DVertices.find(dest) == DImplementation->DVertices.end() ||
-        weight < 0.0) {
+    if(src >= DImplementation->DVertices.size() || dest >= DImplementation->DVertices.size() || weight < 0) {
         return false;
     }
     
-    // Add edge from src to dest
+    // Add edge from source to destination
     DImplementation->DVertices[src].Edges[dest] = weight;
     
-    // If bidirectional, add edge from dest to src
-    if (bidir) {
+    // If bidirectional, add edge from destination to source as well
+    if(bidir) {
         DImplementation->DVertices[dest].Edges[src] = weight;
     }
     
     return true;
 }
 
-// Allows precomputation if needed
 bool CDijkstraPathRouter::Precompute(std::chrono::steady_clock::time_point deadline) noexcept {
-    // For basic Dijkstra's algorithm, no precomputation is needed
+    // No precomputation needed for Dijkstra's algorithm
     return true;
 }
 
-// Finds the shortest path between src and dest vertices
 double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID>& path) noexcept {
-    // Check if vertices exist
-    if (DImplementation->DVertices.find(src) == DImplementation->DVertices.end() ||
-        DImplementation->DVertices.find(dest) == DImplementation->DVertices.end()) {
-        return CPathRouter::NoPathExists;
+    path.clear();
+    
+    if(src >= DImplementation->DVertices.size() || dest >= DImplementation->DVertices.size()) {
+        return NoPathExists;
     }
     
-    // Run Dijkstra's algorithm
-    return DImplementation->DijkstraSearch(src, dest, path);
+    if(src == dest) {
+        // Source and destination are the same
+        path.push_back(src);
+        return 0.0;
+    }
+    
+    std::vector<double> distances(DImplementation->DVertices.size(), std::numeric_limits<double>::infinity());
+    std::vector<TVertexID> previous(DImplementation->DVertices.size(), InvalidVertexID);
+    std::vector<bool> visited(DImplementation->DVertices.size(), false);
+    
+    // Priority queue to get the vertex with the smallest distance
+    std::priority_queue<SImplementation::SDistanceVertexPair, 
+                        std::vector<SImplementation::SDistanceVertexPair>,
+                        std::greater<SImplementation::SDistanceVertexPair>> pq;
+    
+    // Distance to source is 0
+    distances[src] = 0.0;
+    pq.push({0.0, src});
+    
+    while(!pq.empty()) {
+        auto [currentDist, currentVertex] = pq.top();
+        pq.pop();
+        
+        // Skip if already visited
+        if(visited[currentVertex]) {
+            continue;
+        }
+        
+        // Mark as visited
+        visited[currentVertex] = true;
+        
+        // Found destination
+        if(currentVertex == dest) {
+            break;
+        }
+        
+        // Check all neighbors
+        for(const auto& [neighbor, weight] : DImplementation->DVertices[currentVertex].Edges) {
+            double newDist = distances[currentVertex] + weight;
+            
+            if(newDist < distances[neighbor]) {
+                distances[neighbor] = newDist;
+                previous[neighbor] = currentVertex;
+                pq.push({newDist, neighbor});
+            }
+        }
+    }
+    
+    // Check if destination was reached
+    if(distances[dest] == std::numeric_limits<double>::infinity()) {
+        return NoPathExists;
+    }
+    
+    // Construct the path from source to destination
+    TVertexID current = dest;
+    while(current != InvalidVertexID) {
+        path.push_back(current);
+        current = previous[current];
+    }
+    
+    // Reverse the path to get it from source to destination
+    std::reverse(path.begin(), path.end());
+    
+    return distances[dest];
 }
