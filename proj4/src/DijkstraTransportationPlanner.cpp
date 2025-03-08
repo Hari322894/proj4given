@@ -219,11 +219,9 @@ struct CDijkstraTransportationPlanner::SImplementation{
                            std::vector<std::pair<double, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>>>, 
                            std::greater<std::pair<double, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>>>> PriorityQueue;
         
-        std::unordered_map<CTransportationPlanner::TNodeID, double> ShortestTime;
-        std::unordered_map<CTransportationPlanner::TNodeID, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>> Previous;
-        
-        // FIX: Create a set to track visited node+mode combinations to prevent infinite loops
-        std::unordered_set<std::string> VisitedStates;
+        // Track best time to reach each node with each transportation mode
+        std::unordered_map<std::string, double> ShortestTime;
+        std::unordered_map<std::string, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>> Previous;
         
         // Helper function to create a unique key for node+mode combinations
         auto CreateStateKey = [](CTransportationPlanner::TNodeID node, CTransportationPlanner::ETransportationMode mode) -> std::string {
@@ -234,10 +232,16 @@ struct CDijkstraTransportationPlanner::SImplementation{
         PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Walking, src}});
         PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Biking, src}});
         
+        // Initialize all states with infinity
         for(size_t Index = 0; Index < DNodes.size(); Index++){
-            ShortestTime[Index] = std::numeric_limits<double>::max();
+            ShortestTime[CreateStateKey(Index, CTransportationPlanner::ETransportationMode::Walking)] = std::numeric_limits<double>::max();
+            ShortestTime[CreateStateKey(Index, CTransportationPlanner::ETransportationMode::Biking)] = std::numeric_limits<double>::max();
+            ShortestTime[CreateStateKey(Index, CTransportationPlanner::ETransportationMode::Bus)] = std::numeric_limits<double>::max();
         }
-        ShortestTime[src] = 0.0;
+        
+        // Set initial states
+        ShortestTime[CreateStateKey(src, CTransportationPlanner::ETransportationMode::Walking)] = 0.0;
+        ShortestTime[CreateStateKey(src, CTransportationPlanner::ETransportationMode::Biking)] = 0.0;
         
         // Run Dijkstra's algorithm
         while(!PriorityQueue.empty()){
@@ -249,29 +253,24 @@ struct CDijkstraTransportationPlanner::SImplementation{
             auto CurrentMode = std::get<1>(TimeTuple.second);
             auto PreviousIndex = std::get<2>(TimeTuple.second);
             
-            // FIX: Skip if we already visited this node with this mode
+            // Skip if we have a better path to this node+mode already
             std::string StateKey = CreateStateKey(CurrentIndex, CurrentMode);
-            if(VisitedStates.find(StateKey) != VisitedStates.end()){
+            if(CurrentTime > ShortestTime[StateKey]){
                 continue;
             }
-            
-            // FIX: Mark this node+mode combination as visited
-            VisitedStates.insert(StateKey);
             
             // If we've reached the destination, we're done
             if(CurrentIndex == dest){
                 // Reconstruct the path
                 path.clear();
                 auto Current = CurrentIndex;
-                auto PrevMode = CurrentMode;
-                auto PrevNode = PreviousIndex;
+                auto CurrMode = CurrentMode;
                 
                 while(Current != src){
-                    path.push_back({PrevMode, Current});
-                    auto PrevState = Previous[Current];
+                    path.push_back({CurrMode, Current});
+                    auto PrevState = Previous[CreateStateKey(Current, CurrMode)];
                     Current = std::get<0>(PrevState);
-                    PrevMode = std::get<1>(PrevState);
-                    PrevNode = std::get<2>(PrevState);
+                    CurrMode = std::get<1>(PrevState);
                 }
                 
                 // Reverse the path
@@ -281,109 +280,96 @@ struct CDijkstraTransportationPlanner::SImplementation{
             
             // Consider all neighbors based on the current mode
             if(CurrentMode == CTransportationPlanner::ETransportationMode::Walking){
-                // Try walking
-                std::vector<std::pair<CTransportationPlanner::TNodeID, double>> edges;
-                std::vector<CTransportationPlanner::TNodeID> edgePath;
-                
+                // Get direct neighbors only, not full paths
                 for(size_t i = 0; i < DNodes.size(); i++) {
                     if(i == CurrentIndex) continue;
                     
-                    double pathCost = DWalkingRouter.FindShortestPath(CurrentIndex, i, edgePath);
-                    if(pathCost != std::numeric_limits<double>::max()) {
-                        edges.push_back({i, pathCost});
-                    }
-                }
-                
-                for(auto& edge : edges) {
-                    CTransportationPlanner::TNodeID DestIndex = edge.first;
-                    double EdgeTime = edge.second;
+                    std::vector<CTransportationPlanner::TNodeID> edgePath;
+                    double EdgeTime = DWalkingRouter.FindShortestPath(CurrentIndex, i, edgePath);
                     
-                    double NewTime = CurrentTime + EdgeTime;
-                    if(NewTime < ShortestTime[DestIndex]){
-                        ShortestTime[DestIndex] = NewTime;
-                        Previous[DestIndex] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex};
-                        PriorityQueue.push({NewTime, {DestIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                    if(EdgeTime != std::numeric_limits<double>::max()) {
+                        double NewTime = CurrentTime + EdgeTime;
+                        std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Walking);
+                        
+                        if(NewTime < ShortestTime[DestStateKey]){
+                            ShortestTime[DestStateKey] = NewTime;
+                            Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex};
+                            PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                        }
                     }
                 }
                 
-                // Try switching to biking (FIX: Only if not already visited with biking mode)
+                // Try switching to biking
                 std::string BikingStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Biking);
-                if(VisitedStates.find(BikingStateKey) == VisitedStates.end()){
+                if(CurrentTime < ShortestTime[BikingStateKey]){
+                    ShortestTime[BikingStateKey] = CurrentTime;
+                    Previous[BikingStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, PreviousIndex};
                     PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
                 }
                 
-                // Try switching to bus (if at a bus stop) (FIX: Only if not already visited with bus mode)
-                std::string BusStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Bus);
-                if(VisitedStates.find(BusStateKey) == VisitedStates.end()){
-                    for(size_t Index = 0; Index < DBusStops.size(); Index++){
-                        if(Index + DStreetMapNodes.size() == CurrentIndex){
-                            PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
-                            break;
-                        }
+                // Try switching to bus (if at a bus stop)
+                if(CurrentIndex >= DStreetMapNodes.size() && CurrentIndex < DStreetMapNodes.size() + DBusStops.size()){
+                    std::string BusStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Bus);
+                    if(CurrentTime < ShortestTime[BusStateKey]){
+                        ShortestTime[BusStateKey] = CurrentTime;
+                        Previous[BusStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, PreviousIndex};
+                        PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
                     }
                 }
             }
             else if(CurrentMode == CTransportationPlanner::ETransportationMode::Biking){
-                // Try biking
-                std::vector<std::pair<CTransportationPlanner::TNodeID, double>> edges;
-                std::vector<CTransportationPlanner::TNodeID> edgePath;
-                
+                // Get direct neighbors only
                 for(size_t i = 0; i < DNodes.size(); i++) {
                     if(i == CurrentIndex) continue;
                     
-                    double pathCost = DBikingRouter.FindShortestPath(CurrentIndex, i, edgePath);
-                    if(pathCost != std::numeric_limits<double>::max()) {
-                        edges.push_back({i, pathCost});
-                    }
-                }
-                
-                for(auto& edge : edges) {
-                    CTransportationPlanner::TNodeID DestIndex = edge.first;
-                    double EdgeTime = edge.second;
+                    std::vector<CTransportationPlanner::TNodeID> edgePath;
+                    double EdgeTime = DBikingRouter.FindShortestPath(CurrentIndex, i, edgePath);
                     
-                    double NewTime = CurrentTime + EdgeTime;
-                    if(NewTime < ShortestTime[DestIndex]){
-                        ShortestTime[DestIndex] = NewTime;
-                        Previous[DestIndex] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex};
-                        PriorityQueue.push({NewTime, {DestIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                    if(EdgeTime != std::numeric_limits<double>::max()) {
+                        double NewTime = CurrentTime + EdgeTime;
+                        std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Biking);
+                        
+                        if(NewTime < ShortestTime[DestStateKey]){
+                            ShortestTime[DestStateKey] = NewTime;
+                            Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex};
+                            PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                        }
                     }
                 }
                 
-                // Try switching to walking (FIX: Only if not already visited with walking mode)
+                // Try switching to walking
                 std::string WalkingStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Walking);
-                if(VisitedStates.find(WalkingStateKey) == VisitedStates.end()){
+                if(CurrentTime < ShortestTime[WalkingStateKey]){
+                    ShortestTime[WalkingStateKey] = CurrentTime;
+                    Previous[WalkingStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, PreviousIndex};
                     PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
                 }
             }
             else if(CurrentMode == CTransportationPlanner::ETransportationMode::Bus){
-                // Try bus routes
-                std::vector<std::pair<CTransportationPlanner::TNodeID, double>> edges;
-                std::vector<CTransportationPlanner::TNodeID> edgePath;
-                
+                // Get direct neighbors only
                 for(size_t i = 0; i < DNodes.size(); i++) {
                     if(i == CurrentIndex) continue;
                     
-                    double pathCost = DBusRouter.FindShortestPath(CurrentIndex, i, edgePath);
-                    if(pathCost != std::numeric_limits<double>::max()) {
-                        edges.push_back({i, pathCost});
-                    }
-                }
-                
-                for(auto& edge : edges) {
-                    CTransportationPlanner::TNodeID DestIndex = edge.first;
-                    double EdgeTime = edge.second;
+                    std::vector<CTransportationPlanner::TNodeID> edgePath;
+                    double EdgeTime = DBusRouter.FindShortestPath(CurrentIndex, i, edgePath);
                     
-                    double NewTime = CurrentTime + EdgeTime;
-                    if(NewTime < ShortestTime[DestIndex]){
-                        ShortestTime[DestIndex] = NewTime;
-                        Previous[DestIndex] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex};
-                        PriorityQueue.push({NewTime, {DestIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                    if(EdgeTime != std::numeric_limits<double>::max()) {
+                        double NewTime = CurrentTime + EdgeTime;
+                        std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Bus);
+                        
+                        if(NewTime < ShortestTime[DestStateKey]){
+                            ShortestTime[DestStateKey] = NewTime;
+                            Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex};
+                            PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                        }
                     }
                 }
                 
-                // Try switching to walking (FIX: Only if not already visited with walking mode)
+                // Try switching to walking (only possible at bus stops)
                 std::string WalkingStateKey = CreateStateKey(CurrentIndex, CTransportationPlanner::ETransportationMode::Walking);
-                if(VisitedStates.find(WalkingStateKey) == VisitedStates.end()){
+                if(CurrentTime < ShortestTime[WalkingStateKey]){
+                    ShortestTime[WalkingStateKey] = CurrentTime;
+                    Previous[WalkingStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, PreviousIndex};
                     PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
                 }
             }
