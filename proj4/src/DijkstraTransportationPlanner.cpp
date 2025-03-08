@@ -1,5 +1,6 @@
 #include "DijkstraTransportationPlanner.h"
 #include "GeographicUtils.h"
+#include "DijkstraPathRouter.h" // Add this include for the concrete implementation
 #include <algorithm>
 #include <queue>
 #include <unordered_map>
@@ -8,18 +9,18 @@
 #include <iomanip>
 
 struct CDijkstraTransportationPlanner::SImplementation {
-    std::shared_ptr<STransportationPlannerConfig> DConfig;
+    std::shared_ptr<CTransportationPlanner::SConfiguration> DConfig;
     std::vector<TNodeID> DNodeIDToSortedIndex;
     std::vector<std::shared_ptr<CStreetMap::SNode>> DSortedNodes;
     
-    // Path routers for each transportation mode
-    std::shared_ptr<CPathRouter> DWalkRouter;
-    std::shared_ptr<CPathRouter> DBikeRouter;
-    std::shared_ptr<CPathRouter> DBusRouter;
+    // Path routers for each transportation mode - use concrete implementation
+    std::shared_ptr<CDijkstraPathRouter> DWalkRouter;
+    std::shared_ptr<CDijkstraPathRouter> DBikeRouter;
+    std::shared_ptr<CDijkstraPathRouter> DBusRouter;
     
-    SImplementation(std::shared_ptr<STransportationPlannerConfig> config) 
-        : DConfig(config), DWalkRouter(std::make_shared<CPathRouter>()), 
-          DBikeRouter(std::make_shared<CPathRouter>()), DBusRouter(std::make_shared<CPathRouter>()) {
+    SImplementation(std::shared_ptr<CTransportationPlanner::SConfiguration> config) 
+        : DConfig(config), DWalkRouter(std::make_shared<CDijkstraPathRouter>()), 
+          DBikeRouter(std::make_shared<CDijkstraPathRouter>()), DBusRouter(std::make_shared<CDijkstraPathRouter>()) {
         
         // Extract and sort all nodes from street map
         auto StreetMap = DConfig->StreetMap();
@@ -268,8 +269,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
     }
 };
 
-// Constructor
-CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<STransportationPlannerConfig> config)
+// Constructor - fixed to match the header file's declaration
+CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<SConfiguration> config)
     : DImplementation(std::make_shared<SImplementation>(config)) {
 }
 
