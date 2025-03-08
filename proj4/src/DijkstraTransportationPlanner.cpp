@@ -1,606 +1,546 @@
 #include "DijkstraTransportationPlanner.h"
+#include "DijkstraPathRouter.h"
 #include <queue>
 #include <unordered_map>
-#include <algorithm>
+#include <unordered_set>
 #include <limits>
 #include <chrono>
-#include <thread>
-#include <iostream>
 
-struct CDijkstraTransportationPlanner::SImplementation {
-    std::shared_ptr<SConfiguration> DConfig;
-    std::vector<std::shared_ptr<CStreetMap::SNode>> DNodes;
-    std::unordered_map<CStreetMap::TNodeID, size_t> DNodeIDToIndex;
+struct CDijkstraTransportationPlanner::SImplementation{
+    std::shared_ptr<CTransportationPlanner::SConfiguration> DConfig;
+    std::vector<CTransportationPlanner::SNode> DNodes;
+    std::vector<std::shared_ptr<CStreetMap::SNode>> DStreetMapNodes;
+    std::vector<std::shared_ptr<CBusSystem::SStop>> DBusStops;
     
-    // Precomputed paths for walking, biking, and bus routes
-    CPathRouter DWalkingRouter;
-    CPathRouter DBikingRouter;
-    CPathRouter DBusRouter;
+    // Use concrete implementation CDijkstraPathRouter instead of abstract CPathRouter
+    CDijkstraPathRouter DWalkingRouter;
+    CDijkstraPathRouter DBikingRouter;
+    CDijkstraPathRouter DBusRouter;
     
-    SImplementation(std::shared_ptr<SConfiguration> config) 
+    SImplementation(std::shared_ptr<CTransportationPlanner::SConfiguration> config)
         : DConfig(config) {
         
-        // Initialize nodes and node ID to index map
-        auto StreetMap = DConfig->StreetMap();
-        for(size_t Index = 0; Index < StreetMap->NodeCount(); Index++) {
-            auto Node = StreetMap->NodeByIndex(Index);
-            DNodes.push_back(Node);
-            DNodeIDToIndex[Node->ID()] = DNodes.size() - 1;
+        // Extract all street map nodes
+        for(size_t NodeIndex = 0; NodeIndex < DConfig->StreetMap()->NodeCount(); NodeIndex++){
+            auto Node = DConfig->StreetMap()->NodeByIndex(NodeIndex);
+            DStreetMapNodes.push_back(Node);
+            CTransportationPlanner::SNode TransporationNode;
+            TransporationNode.Location = Node->Location();
+            DNodes.push_back(TransporationNode);
         }
         
-        // Sort nodes by ID for binary search
-        std::sort(DNodes.begin(), DNodes.end(), 
-                 [](const auto &lhs, const auto &rhs) {
-                     return lhs->ID() < rhs->ID();
-                 });
-        
-        // Update index map after sorting
-        for(size_t Index = 0; Index < DNodes.size(); Index++) {
-            DNodeIDToIndex[DNodes[Index]->ID()] = Index;
+        // Extract all bus stop nodes
+        for(size_t StopIndex = 0; StopIndex < DConfig->BusSystem()->StopCount(); StopIndex++){
+            auto Stop = DConfig->BusSystem()->StopByIndex(StopIndex);
+            DBusStops.push_back(Stop);
+            CTransportationPlanner::SNode TransporationNode;
+            TransporationNode.Location = Stop->Location();
+            DNodes.push_back(TransporationNode);
         }
         
-        // Initialize path routers
-        DWalkingRouter.SetNodeCount(DNodes.size());
-        DBikingRouter.SetNodeCount(DNodes.size());
-        DBusRouter.SetNodeCount(DNodes.size());
-        
-        // Precompute paths
-        PrecomputePaths();
+        // Add nodes to the routers
+        for (size_t i = 0; i < DNodes.size(); i++) {
+            DWalkingRouter.AddVertex(i);
+            DBikingRouter.AddVertex(i);
+            DBusRouter.AddVertex(i);
+        }
+    }
+    
+    ~SImplementation(){
+    
     }
     
     void PrecomputePaths() {
-        auto start_time = std::chrono::steady_clock::now();
-        auto StreetMap = DConfig->StreetMap();
-        auto BusSystem = DConfig->BusSystem();
-        double DefaultSpeedLimit = DConfig->DefaultSpeedLimit();
-        double WalkSpeed = DConfig->WalkSpeed();
-        double BikeSpeed = DConfig->BikeSpeed();
-        
-        // Add walking edges
-        for(size_t Index = 0; Index < StreetMap->WayCount(); Index++) {
-            auto Way = StreetMap->WayByIndex(Index);
-            auto NodeIDs = Way->NodeIDs();
-            
-            for(size_t IDIndex = 0; IDIndex + 1 < NodeIDs.size(); IDIndex++) {
-                auto FromNodeID = NodeIDs[IDIndex];
-                auto ToNodeID = NodeIDs[IDIndex + 1];
-                
-                if(DNodeIDToIndex.find(FromNodeID) == DNodeIDToIndex.end() || 
-                   DNodeIDToIndex.find(ToNodeID) == DNodeIDToIndex.end()) {
-                    continue;
-                }
-                
-                auto FromIndex = DNodeIDToIndex[FromNodeID];
-                auto ToIndex = DNodeIDToIndex[ToNodeID];
-                
-                auto FromNode = StreetMap->NodeByID(FromNodeID);
-                auto ToNode = StreetMap->NodeByID(ToNodeID);
-                
-                if(!FromNode || !ToNode) {
-                    continue;
-                }
-                
-                double Distance = CPathRouter::HaversineDistance(
-                    FromNode->Location().first, FromNode->Location().second,
-                    ToNode->Location().first, ToNode->Location().second
-                );
-                
-                // Walking is always allowed
-                double WalkTime = Distance / WalkSpeed;
-                DWalkingRouter.AddDirectedEdge(FromIndex, ToIndex, WalkTime);
-                DWalkingRouter.AddDirectedEdge(ToIndex, FromIndex, WalkTime);
-                
-                // Biking is allowed if not explicitly forbidden
-                bool BikeAllowed = true;
-                auto Attributes = Way->Tags();
-                for(auto &Attribute : Attributes) {
-                    if(Attribute.first == "bicycle" && Attribute.second == "no") {
-                        BikeAllowed = false;
-                        break;
-                    }
-                }
-                
-                if(BikeAllowed) {
-                    double BikeTime = Distance / BikeSpeed;
-                    DBikingRouter.AddDirectedEdge(FromIndex, ToIndex, BikeTime);
-                    DBikingRouter.AddDirectedEdge(ToIndex, FromIndex, BikeTime);
-                }
-            }
-        }
-        
-        // Add bus routes
-        for(size_t RouteIndex = 0; RouteIndex < BusSystem->RouteCount(); RouteIndex++) {
-            auto Route = BusSystem->RouteByIndex(RouteIndex);
-            auto Stops = Route->StopIDs();
-            
-            for(size_t StopIndex = 0; StopIndex + 1 < Stops.size(); StopIndex++) {
-                auto FromStopID = Stops[StopIndex];
-                auto ToStopID = Stops[StopIndex + 1];
-                
-                auto FromStop = BusSystem->StopByID(FromStopID);
-                auto ToStop = BusSystem->StopByID(ToStopID);
-                
-                if(!FromStop || !ToStop) {
-                    continue;
-                }
-                
-                auto FromNodeID = FromStop->NodeID();
-                auto ToNodeID = ToStop->NodeID();
-                
-                if(DNodeIDToIndex.find(FromNodeID) == DNodeIDToIndex.end() || 
-                   DNodeIDToIndex.find(ToNodeID) == DNodeIDToIndex.end()) {
-                    continue;
-                }
-                
-                auto FromIndex = DNodeIDToIndex[FromNodeID];
-                auto ToIndex = DNodeIDToIndex[ToNodeID];
-                
-                auto FromNode = StreetMap->NodeByID(FromNodeID);
-                auto ToNode = StreetMap->NodeByID(ToNodeID);
-                
-                if(!FromNode || !ToNode) {
-                    continue;
-                }
-                
-                double Distance = CPathRouter::HaversineDistance(
-                    FromNode->Location().first, FromNode->Location().second,
-                    ToNode->Location().first, ToNode->Location().second
-                );
-                
-                // Route time includes bus speed and stop time
-                double RouteTime = Distance / DefaultSpeedLimit + DConfig->BusStopTime() / 3600.0;
-                DBusRouter.AddDirectedEdge(FromIndex, ToIndex, RouteTime);
-            }
-        }
-        
-        // Precompute paths for allocated time
-        int seconds_to_precompute = DConfig->PrecomputeTime();
-        auto current_time = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count();
-        
-        // Precompute paths up to the allocated time limit
-        while(elapsed < seconds_to_precompute) {
-            DWalkingRouter.Precompute();
-            DBikingRouter.Precompute();
-            DBusRouter.Precompute();
-            
-            current_time = std::chrono::steady_clock::now();
-            elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count();
-        }
-    }
-    
-    double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
-        path.clear();
-        
-        if(DNodeIDToIndex.find(src) == DNodeIDToIndex.end() || 
-           DNodeIDToIndex.find(dest) == DNodeIDToIndex.end()) {
-            return -1.0; // Invalid nodes
-        }
-        
-        auto SrcIndex = DNodeIDToIndex[src];
-        auto DestIndex = DNodeIDToIndex[dest];
-        
-        std::vector<size_t> indices;
-        double distance = DWalkingRouter.FindShortestPath(SrcIndex, DestIndex, indices);
-        
-        if(distance == CPathRouter::NoPathExists) {
-            return -1.0; // No path exists
-        }
-        
-        // Convert indices back to node IDs
-        for(auto index : indices) {
-            path.push_back(DNodes[index]->ID());
-        }
-        
-        return distance;
-    }
-    
-    double FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
-        path.clear();
-        
-        if(DNodeIDToIndex.find(src) == DNodeIDToIndex.end() || 
-           DNodeIDToIndex.find(dest) == DNodeIDToIndex.end()) {
-            return -1.0; // Invalid nodes
-        }
-        
-        auto SrcIndex = DNodeIDToIndex[src];
-        auto DestIndex = DNodeIDToIndex[dest];
-        
-        // Create a multimodal graph for the fastest path
-        struct SNodeInfo {
-            double Time = std::numeric_limits<double>::max();
-            bool Visited = false;
-            size_t PrevNode = std::numeric_limits<size_t>::max();
-            ETransportationMode PrevMode = ETransportationMode::Walk;
-            ETransportationMode CurrMode = ETransportationMode::Walk;
-        };
-        
-        // One set of nodes for each transportation mode
-        std::vector<SNodeInfo> WalkNodes(DNodes.size());
-        std::vector<SNodeInfo> BikeNodes(DNodes.size());
-        std::vector<SNodeInfo> BusNodes(DNodes.size());
-        
-        // Priority queue for Dijkstra's algorithm
-        using TNodeTimeIndex = std::tuple<double, ETransportationMode, size_t>;
-        std::priority_queue<TNodeTimeIndex, std::vector<TNodeTimeIndex>, std::greater<TNodeTimeIndex>> PriorityQueue;
-        
-        // Initialize walking source
-        WalkNodes[SrcIndex].Time = 0.0;
-        WalkNodes[SrcIndex].CurrMode = ETransportationMode::Walk;
-        PriorityQueue.push(std::make_tuple(0.0, ETransportationMode::Walk, SrcIndex));
-        
-        // Initialize biking source
-        BikeNodes[SrcIndex].Time = 0.0;
-        BikeNodes[SrcIndex].CurrMode = ETransportationMode::Bike;
-        PriorityQueue.push(std::make_tuple(0.0, ETransportationMode::Bike, SrcIndex));
-        
-        // Initialize bus source
-        // Check if the source is a bus stop
-        bool SrcIsBusStop = false;
-        auto BusSystem = DConfig->BusSystem();
-        for(size_t i = 0; i < BusSystem->StopCount(); i++) {
-            auto Stop = BusSystem->StopByIndex(i);
-            if(Stop->NodeID() == src) {
-                SrcIsBusStop = true;
-                break;
-            }
-        }
-        
-        if(SrcIsBusStop) {
-            BusNodes[SrcIndex].Time = 0.0;
-            BusNodes[SrcIndex].CurrMode = ETransportationMode::Bus;
-            PriorityQueue.push(std::make_tuple(0.0, ETransportationMode::Bus, SrcIndex));
-        }
-        
-        while(!PriorityQueue.empty()) {
-            auto [Time, Mode, CurrentIndex] = PriorityQueue.top();
-            PriorityQueue.pop();
-            
-            // Skip if already visited with better time
-            std::vector<SNodeInfo> *Nodes;
-            if(Mode == ETransportationMode::Walk) {
-                Nodes = &WalkNodes;
-            } else if(Mode == ETransportationMode::Bike) {
-                Nodes = &BikeNodes;
-            } else { // Bus
-                Nodes = &BusNodes;
+        // Process Street Map Nodes
+        for(size_t WayIndex = 0; WayIndex < DConfig->StreetMap()->WayCount(); WayIndex++){
+            auto Way = DConfig->StreetMap()->WayByIndex(WayIndex);
+            // Get node IDs from the way
+            std::vector<CStreetMap::TNodeID> NodeIDs;
+            for (size_t i = 0; i < Way->NodeCount(); i++) {
+                NodeIDs.push_back(Way->GetNodeID(i));
             }
             
-            if((*Nodes)[CurrentIndex].Visited) {
+            // Ensure there are at least 2 nodes to form an edge
+            if(NodeIDs.size() < 2){
                 continue;
             }
             
-            (*Nodes)[CurrentIndex].Visited = true;
-            
-            // If destination reached, trace back the path
-            if(CurrentIndex == DestIndex) {
-                // Found the fastest path
-                path.clear();
-                size_t CurrentNode = DestIndex;
-                ETransportationMode CurrentMode = Mode;
+            // Map Way nodes to our transportation nodes
+            std::vector<CTransportationPlanner::TNodeID> TransNodeIDs;
+            for(auto NodeID : NodeIDs){
+                auto Node = DConfig->StreetMap()->NodeByID(NodeID);
+                bool Found = false;
                 
-                while(CurrentNode != SrcIndex) {
-                    path.push_back(std::make_pair(CurrentMode, DNodes[CurrentNode]->ID()));
-                    
-                    // Move to previous node
-                    if(CurrentMode == ETransportationMode::Walk) {
-                        CurrentMode = WalkNodes[CurrentNode].PrevMode;
-                        CurrentNode = WalkNodes[CurrentNode].PrevNode;
-                    } else if(CurrentMode == ETransportationMode::Bike) {
-                        CurrentMode = BikeNodes[CurrentNode].PrevMode;
-                        CurrentNode = BikeNodes[CurrentNode].PrevNode;
-                    } else { // Bus
-                        CurrentMode = BusNodes[CurrentNode].PrevMode;
-                        CurrentNode = BusNodes[CurrentNode].PrevNode;
-                    }
-                }
-                
-                // Add source node
-                path.push_back(std::make_pair(CurrentMode, DNodes[SrcIndex]->ID()));
-                
-                // Reverse path to get source to destination
-                std::reverse(path.begin(), path.end());
-                
-                return Time;
-            }
-            
-            // Process edges from current node
-            if(Mode == ETransportationMode::Walk) {
-                // Walking to walking
-                for(size_t EdgeIndex = 0; EdgeIndex < DWalkingRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                    auto [DestIndex, EdgeTime] = DWalkingRouter.GetEdge(CurrentIndex, EdgeIndex);
-                    double NewTime = Time + EdgeTime;
-                    
-                    if(NewTime < WalkNodes[DestIndex].Time) {
-                        WalkNodes[DestIndex].Time = NewTime;
-                        WalkNodes[DestIndex].PrevNode = CurrentIndex;
-                        WalkNodes[DestIndex].PrevMode = ETransportationMode::Walk;
-                        WalkNodes[DestIndex].CurrMode = ETransportationMode::Walk;
-                        PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Walk, DestIndex));
-                    }
-                }
-                
-                // Walking to biking (can switch at any node)
-                for(size_t EdgeIndex = 0; EdgeIndex < DBikingRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                    auto [DestIndex, EdgeTime] = DBikingRouter.GetEdge(CurrentIndex, EdgeIndex);
-                    double NewTime = Time + EdgeTime;
-                    
-                    if(NewTime < BikeNodes[DestIndex].Time) {
-                        BikeNodes[DestIndex].Time = NewTime;
-                        BikeNodes[DestIndex].PrevNode = CurrentIndex;
-                        BikeNodes[DestIndex].PrevMode = ETransportationMode::Walk;
-                        BikeNodes[DestIndex].CurrMode = ETransportationMode::Bike;
-                        PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Bike, DestIndex));
-                    }
-                }
-                
-                // Walking to bus (only at bus stops)
-                bool CurrentIsBusStop = false;
-                for(size_t i = 0; i < BusSystem->StopCount(); i++) {
-                    auto Stop = BusSystem->StopByIndex(i);
-                    if(Stop->NodeID() == DNodes[CurrentIndex]->ID()) {
-                        CurrentIsBusStop = true;
+                for(size_t Index = 0; Index < DStreetMapNodes.size(); Index++){
+                    if(DStreetMapNodes[Index]->ID() == NodeID){
+                        TransNodeIDs.push_back(Index);
+                        Found = true;
                         break;
                     }
                 }
                 
-                if(CurrentIsBusStop) {
-                    for(size_t EdgeIndex = 0; EdgeIndex < DBusRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                        auto [DestIndex, EdgeTime] = DBusRouter.GetEdge(CurrentIndex, EdgeIndex);
-                        double NewTime = Time + EdgeTime;
-                        
-                        if(NewTime < BusNodes[DestIndex].Time) {
-                            BusNodes[DestIndex].Time = NewTime;
-                            BusNodes[DestIndex].PrevNode = CurrentIndex;
-                            BusNodes[DestIndex].PrevMode = ETransportationMode::Walk;
-                            BusNodes[DestIndex].CurrMode = ETransportationMode::Bus;
-                            PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Bus, DestIndex));
+                if(!Found){
+                    TransNodeIDs.push_back(std::numeric_limits<CTransportationPlanner::TNodeID>::max());
+                }
+            }
+            
+            // Create edges for each sequential pair
+            for(size_t Index = 1; Index < TransNodeIDs.size(); Index++){
+                auto FromIndex = TransNodeIDs[Index-1];
+                auto ToIndex = TransNodeIDs[Index];
+                
+                if((FromIndex == std::numeric_limits<CTransportationPlanner::TNodeID>::max()) 
+                   || (ToIndex == std::numeric_limits<CTransportationPlanner::TNodeID>::max())){
+                    continue;
+                }
+                
+                // Calculate Haversine distance
+                double Distance = HaversineDistance(
+                                    DNodes[FromIndex].Location.first, 
+                                    DNodes[FromIndex].Location.second,
+                                    DNodes[ToIndex].Location.first, 
+                                    DNodes[ToIndex].Location.second);
+                
+                // Walking is always allowed
+                double WalkTime = Distance / DConfig->WalkSpeed();
+                DWalkingRouter.AddEdge(FromIndex, ToIndex, WalkTime, true);
+                
+                // Biking may be restricted
+                auto Attributes = Way->GetAttributes();
+                bool BikingAllowed = true;
+                
+                for(auto Attribute : Attributes){
+                    if(Attribute.first == "highway"){
+                        if((Attribute.second == "motorway") || (Attribute.second == "motorway_link")){
+                            BikingAllowed = false;
                         }
                     }
                 }
-            } else if(Mode == ETransportationMode::Bike) {
-                // Biking to biking
-                for(size_t EdgeIndex = 0; EdgeIndex < DBikingRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                    auto [DestIndex, EdgeTime] = DBikingRouter.GetEdge(CurrentIndex, EdgeIndex);
-                    double NewTime = Time + EdgeTime;
-                    
-                    if(NewTime < BikeNodes[DestIndex].Time) {
-                        BikeNodes[DestIndex].Time = NewTime;
-                        BikeNodes[DestIndex].PrevNode = CurrentIndex;
-                        BikeNodes[DestIndex].PrevMode = ETransportationMode::Bike;
-                        BikeNodes[DestIndex].CurrMode = ETransportationMode::Bike;
-                        PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Bike, DestIndex));
+                
+                if(BikingAllowed){
+                    double BikeTime = Distance / DConfig->BikeSpeed();
+                    DBikingRouter.AddEdge(FromIndex, ToIndex, BikeTime, true);
+                }
+            }
+        }
+        
+        // Process Bus Routes
+        for(size_t RouteIndex = 0; RouteIndex < DConfig->BusSystem()->RouteCount(); RouteIndex++){
+            auto Route = DConfig->BusSystem()->RouteByIndex(RouteIndex);
+            // Get stop IDs from the route
+            std::vector<CBusSystem::TStopID> Stops;
+            for (size_t i = 0; i < Route->StopCount(); i++) {
+                Stops.push_back(Route->GetStopID(i));
+            }
+            
+            // Ensure there are at least 2 stops to form an edge
+            if(Stops.size() < 2){
+                continue;
+            }
+            
+            // Map Bus stops to our transportation nodes
+            std::vector<CTransportationPlanner::TNodeID> TransNodeIDs;
+            size_t StopOffset = DStreetMapNodes.size();
+            
+            for(auto StopID : Stops){
+                auto Stop = DConfig->BusSystem()->StopByID(StopID);
+                bool Found = false;
+                
+                for(size_t Index = 0; Index < DBusStops.size(); Index++){
+                    if(DBusStops[Index]->ID() == StopID){
+                        TransNodeIDs.push_back(Index + StopOffset);
+                        Found = true;
+                        break;
                     }
                 }
                 
-                // Biking to walking (can switch at any node)
-                for(size_t EdgeIndex = 0; EdgeIndex < DWalkingRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                    auto [DestIndex, EdgeTime] = DWalkingRouter.GetEdge(CurrentIndex, EdgeIndex);
-                    double NewTime = Time + EdgeTime;
-                    
-                    if(NewTime < WalkNodes[DestIndex].Time) {
-                        WalkNodes[DestIndex].Time = NewTime;
-                        WalkNodes[DestIndex].PrevNode = CurrentIndex;
-                        WalkNodes[DestIndex].PrevMode = ETransportationMode::Bike;
-                        WalkNodes[DestIndex].CurrMode = ETransportationMode::Walk;
-                        PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Walk, DestIndex));
-                    }
+                if(!Found){
+                    TransNodeIDs.push_back(std::numeric_limits<CTransportationPlanner::TNodeID>::max());
                 }
-            } else { // Bus
-                // Bus to bus
-                for(size_t EdgeIndex = 0; EdgeIndex < DBusRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                    auto [DestIndex, EdgeTime] = DBusRouter.GetEdge(CurrentIndex, EdgeIndex);
-                    double NewTime = Time + EdgeTime;
+            }
+            
+            // Create edges for each sequential pair
+            for(size_t Index = 1; Index < TransNodeIDs.size(); Index++){
+                auto FromIndex = TransNodeIDs[Index-1];
+                auto ToIndex = TransNodeIDs[Index];
+                
+                if((FromIndex == std::numeric_limits<CTransportationPlanner::TNodeID>::max()) 
+                   || (ToIndex == std::numeric_limits<CTransportationPlanner::TNodeID>::max())){
+                    continue;
+                }
+                
+                // Calculate Haversine distance
+                double Distance = HaversineDistance(
+                                    DNodes[FromIndex].Location.first, 
+                                    DNodes[FromIndex].Location.second,
+                                    DNodes[ToIndex].Location.first, 
+                                    DNodes[ToIndex].Location.second);
+                
+                double RouteTime = Distance / DConfig->BusSpeed();
+                DBusRouter.AddEdge(FromIndex, ToIndex, RouteTime, false);
+            }
+        }
+        
+        try{
+            // Use a far future deadline for precomputation
+            auto Deadline = std::chrono::steady_clock::now() + std::chrono::hours(1);
+            DWalkingRouter.Precompute(Deadline);
+            DBikingRouter.Precompute(Deadline);
+            DBusRouter.Precompute(Deadline);
+        }
+        catch(std::exception &Exception){
+            std::cout << Exception.what() << std::endl;
+        }
+    }
+    
+    // Helper function for Haversine distance
+    double HaversineDistance(double lat1, double lon1, double lat2, double lon2) {
+        // Convert to radians
+        const double PI = 3.14159265358979323846;
+        lat1 *= PI / 180.0;
+        lon1 *= PI / 180.0;
+        lat2 *= PI / 180.0;
+        lon2 *= PI / 180.0;
+        
+        // Haversine formula
+        double dlon = lon2 - lon1;
+        double dlat = lat2 - lat1;
+        double a = std::sin(dlat/2) * std::sin(dlat/2) + std::cos(lat1) * std::cos(lat2) * std::sin(dlon/2) * std::sin(dlon/2);
+        double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1-a));
+        
+        // Earth radius in meters
+        const double R = 6371000.0;
+        return R * c;
+    }
+    
+    double FindFastestPath(CTransportationPlanner::TNodeID src, CTransportationPlanner::TNodeID dest, std::vector<std::pair<CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>> &path){
+        // Initialize the data structures for Dijkstra's algorithm
+        std::priority_queue<std::pair<double, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>>, 
+                           std::vector<std::pair<double, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>>>, 
+                           std::greater<std::pair<double, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>>>> PriorityQueue;
+        
+        std::unordered_map<CTransportationPlanner::TNodeID, double> ShortestTime;
+        std::unordered_map<CTransportationPlanner::TNodeID, std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID>> Previous;
+        std::unordered_set<CTransportationPlanner::TNodeID> Visited;
+        
+        // Initialize sources with different modes
+        PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Walking, src}});
+        PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Biking, src}});
+        
+        for(size_t Index = 0; Index < DNodes.size(); Index++){
+            ShortestTime[Index] = std::numeric_limits<double>::max();
+        }
+        ShortestTime[src] = 0.0;
+        
+        // Run Dijkstra's algorithm
+        while(!PriorityQueue.empty()){
+            auto TimeTuple = PriorityQueue.top();
+            PriorityQueue.pop();
+            
+            auto CurrentTime = TimeTuple.first;
+            auto CurrentIndex = std::get<0>(TimeTuple.second);
+            auto CurrentMode = std::get<1>(TimeTuple.second);
+            auto PreviousIndex = std::get<2>(TimeTuple.second);
+            
+            // Skip if we already found a shorter path to this node with this mode
+            std::tuple<CTransportationPlanner::TNodeID, CTransportationPlanner::ETransportationMode, CTransportationPlanner::TNodeID> StateKey = {CurrentIndex, CurrentMode, PreviousIndex};
+            if(Visited.find(CurrentIndex) != Visited.end()){
+                continue;
+            }
+            
+            // If we've reached the destination, we're done
+            if(CurrentIndex == dest){
+                // Reconstruct the path
+                path.clear();
+                auto Current = CurrentIndex;
+                auto PrevMode = CurrentMode;
+                auto PrevNode = PreviousIndex;
+                
+                while(Current != src){
+                    path.push_back({PrevMode, Current});
+                    auto PrevState = Previous[Current];
+                    Current = std::get<0>(PrevState);
+                    PrevMode = std::get<1>(PrevState);
+                    PrevNode = std::get<2>(PrevState);
+                }
+                
+                // Reverse the path
+                std::reverse(path.begin(), path.end());
+                return CurrentTime;
+            }
+            
+            Visited.insert(CurrentIndex);
+            
+            // Consider all neighbors based on the current mode
+            if(CurrentMode == CTransportationPlanner::ETransportationMode::Walking){
+                // Try walking
+                std::vector<std::pair<CTransportationPlanner::TNodeID, double>> edges;
+                std::vector<CTransportationPlanner::TNodeID> edgePath;
+                
+                for(size_t i = 0; i < DNodes.size(); i++) {
+                    if(i == CurrentIndex) continue;
                     
-                    if(NewTime < BusNodes[DestIndex].Time) {
-                        BusNodes[DestIndex].Time = NewTime;
-                        BusNodes[DestIndex].PrevNode = CurrentIndex;
-                        BusNodes[DestIndex].PrevMode = ETransportationMode::Bus;
-                        BusNodes[DestIndex].CurrMode = ETransportationMode::Bus;
-                        PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Bus, DestIndex));
+                    double pathCost = DWalkingRouter.FindShortestPath(CurrentIndex, i, edgePath);
+                    if(pathCost != std::numeric_limits<double>::max()) {
+                        edges.push_back({i, pathCost});
                     }
                 }
                 
-                // Bus to walking (can switch at any node)
-                for(size_t EdgeIndex = 0; EdgeIndex < DWalkingRouter.EdgeCount(CurrentIndex); EdgeIndex++) {
-                    auto [DestIndex, EdgeTime] = DWalkingRouter.GetEdge(CurrentIndex, EdgeIndex);
-                    double NewTime = Time + EdgeTime;
+                for(auto& edge : edges) {
+                    CTransportationPlanner::TNodeID DestIndex = edge.first;
+                    double EdgeTime = edge.second;
                     
-                    if(NewTime < WalkNodes[DestIndex].Time) {
-                        WalkNodes[DestIndex].Time = NewTime;
-                        WalkNodes[DestIndex].PrevNode = CurrentIndex;
-                        WalkNodes[DestIndex].PrevMode = ETransportationMode::Bus;
-                        WalkNodes[DestIndex].CurrMode = ETransportationMode::Walk;
-                        PriorityQueue.push(std::make_tuple(NewTime, ETransportationMode::Walk, DestIndex));
+                    double NewTime = CurrentTime + EdgeTime;
+                    if(NewTime < ShortestTime[DestIndex]){
+                        ShortestTime[DestIndex] = NewTime;
+                        Previous[DestIndex] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex};
+                        PriorityQueue.push({NewTime, {DestIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
                     }
                 }
+                
+                // Try switching to biking
+                PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                
+                // Try switching to bus (if at a bus stop)
+                for(size_t Index = 0; Index < DBusStops.size(); Index++){
+                    if(Index + DStreetMapNodes.size() == CurrentIndex){
+                        PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                        break;
+                    }
+                }
+            }
+            else if(CurrentMode == CTransportationPlanner::ETransportationMode::Biking){
+                // Try biking
+                std::vector<std::pair<CTransportationPlanner::TNodeID, double>> edges;
+                std::vector<CTransportationPlanner::TNodeID> edgePath;
+                
+                for(size_t i = 0; i < DNodes.size(); i++) {
+                    if(i == CurrentIndex) continue;
+                    
+                    double pathCost = DBikingRouter.FindShortestPath(CurrentIndex, i, edgePath);
+                    if(pathCost != std::numeric_limits<double>::max()) {
+                        edges.push_back({i, pathCost});
+                    }
+                }
+                
+                for(auto& edge : edges) {
+                    CTransportationPlanner::TNodeID DestIndex = edge.first;
+                    double EdgeTime = edge.second;
+                    
+                    double NewTime = CurrentTime + EdgeTime;
+                    if(NewTime < ShortestTime[DestIndex]){
+                        ShortestTime[DestIndex] = NewTime;
+                        Previous[DestIndex] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex};
+                        PriorityQueue.push({NewTime, {DestIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                    }
+                }
+                
+                // Try switching to walking
+                PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+            }
+            else if(CurrentMode == CTransportationPlanner::ETransportationMode::Bus){
+                // Try bus routes
+                std::vector<std::pair<CTransportationPlanner::TNodeID, double>> edges;
+                std::vector<CTransportationPlanner::TNodeID> edgePath;
+                
+                for(size_t i = 0; i < DNodes.size(); i++) {
+                    if(i == CurrentIndex) continue;
+                    
+                    double pathCost = DBusRouter.FindShortestPath(CurrentIndex, i, edgePath);
+                    if(pathCost != std::numeric_limits<double>::max()) {
+                        edges.push_back({i, pathCost});
+                    }
+                }
+                
+                for(auto& edge : edges) {
+                    CTransportationPlanner::TNodeID DestIndex = edge.first;
+                    double EdgeTime = edge.second;
+                    
+                    double NewTime = CurrentTime + EdgeTime;
+                    if(NewTime < ShortestTime[DestIndex]){
+                        ShortestTime[DestIndex] = NewTime;
+                        Previous[DestIndex] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex};
+                        PriorityQueue.push({NewTime, {DestIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                    }
+                }
+                
+                // Try switching to walking
+                PriorityQueue.push({CurrentTime, {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
             }
         }
         
         // No path found
-        return -1.0;
+        return std::numeric_limits<double>::max();
     }
     
-    bool GetPathDescription(const std::vector<TTripStep> &path, std::vector<std::string> &desc) const {
-        desc.clear();
+    bool FindPathByFewestNodes(CTransportationPlanner::TNodeID src, CTransportationPlanner::TNodeID dest, std::vector<CTransportationPlanner::TNodeID> &path){
+        // Initialize priority queue for BFS
+        std::queue<CTransportationPlanner::TNodeID> Queue;
+        std::unordered_map<CTransportationPlanner::TNodeID, CTransportationPlanner::TNodeID> Previous;
+        std::unordered_set<CTransportationPlanner::TNodeID> Visited;
         
-        if(path.empty()) {
-            return false;
-        }
+        Queue.push(src);
+        Visited.insert(src);
         
-        auto StreetMap = DConfig->StreetMap();
-        auto BusSystem = DConfig->BusSystem();
-        
-        // Get street name for a segment if possible
-        auto GetStreetName = [&](TNodeID from, TNodeID to) -> std::string {
-            for(size_t WayIndex = 0; WayIndex < StreetMap->WayCount(); WayIndex++) {
-                auto Way = StreetMap->WayByIndex(WayIndex);
-                auto NodeIDs = Way->NodeIDs();
+        while(!Queue.empty()){
+            auto CurrentID = Queue.front();
+            Queue.pop();
+            
+            if(CurrentID == dest){
+                // Reconstruct path
+                path.clear();
+                path.push_back(dest);
                 
-                for(size_t IDIndex = 0; IDIndex + 1 < NodeIDs.size(); IDIndex++) {
-                    if((NodeIDs[IDIndex] == from && NodeIDs[IDIndex + 1] == to) ||
-                       (NodeIDs[IDIndex] == to && NodeIDs[IDIndex + 1] == from)) {
-                        auto Tags = Way->Tags();
-                        for(auto &Tag : Tags) {
-                            if(Tag.first == "name") {
-                                return Tag.second;
+                auto Current = dest;
+                while(Current != src){
+                    Current = Previous[Current];
+                    path.push_back(Current);
+                }
+                
+                std::reverse(path.begin(), path.end());
+                return true;
+            }
+            
+            // Find neighbors via all modes
+            auto processWays = [&](CTransportationPlanner::TNodeID nodeID) {
+                for(size_t WayIndex = 0; WayIndex < DConfig->StreetMap()->WayCount(); WayIndex++){
+                    auto Way = DConfig->StreetMap()->WayByIndex(WayIndex);
+                    // Extract node IDs from the way
+                    std::vector<CStreetMap::TNodeID> NodeIDs;
+                    for (size_t i = 0; i < Way->NodeCount(); i++) {
+                        NodeIDs.push_back(Way->GetNodeID(i));
+                    }
+                    
+                    for(size_t Index = 0; Index < NodeIDs.size(); Index++){
+                        auto StreetMapNodeID = NodeIDs[Index];
+                        
+                        for(size_t TransNodeIndex = 0; TransNodeIndex < DStreetMapNodes.size(); TransNodeIndex++){
+                            if(DStreetMapNodes[TransNodeIndex]->ID() == StreetMapNodeID){
+                                if((TransNodeIndex != nodeID) && (Visited.find(TransNodeIndex) == Visited.end())){
+                                    // Check if this way is accessible
+                                    bool Accessible = true;
+                                    
+                                    // Check for highway=motorway tag
+                                    auto Tags = Way->GetAttributes();
+                                    for(auto Tag : Tags){
+                                        if((Tag.first == "highway") && (Tag.second == "motorway")){
+                                            Accessible = false;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if(Accessible){
+                                        Previous[TransNodeIndex] = nodeID;
+                                        Visited.insert(TransNodeIndex);
+                                        Queue.push(TransNodeIndex);
+                                    }
+                                }
+                                break;
                             }
                         }
-                        break;
                     }
                 }
-            }
-            return "unnamed street";
-        };
-        
-        // Get bus route for a segment if possible
-        auto GetBusRoute = [&](TNodeID from, TNodeID to) -> std::string {
-            for(size_t RouteIndex = 0; RouteIndex < BusSystem->RouteCount(); RouteIndex++) {
-                auto Route = BusSystem->RouteByIndex(RouteIndex);
-                auto StopIDs = Route->StopIDs();
-                
-                for(size_t StopIndex = 0; StopIndex + 1 < StopIDs.size(); StopIndex++) {
-                    auto FromStop = BusSystem->StopByID(StopIDs[StopIndex]);
-                    auto ToStop = BusSystem->StopByID(StopIDs[StopIndex + 1]);
-                    
-                    if(!FromStop || !ToStop) {
-                        continue;
-                    }
-                    
-                    if((FromStop->NodeID() == from && ToStop->NodeID() == to) ||
-                       (FromStop->NodeID() == to && ToStop->NodeID() == from)) {
-                        return Route->Name();
-                    }
-                }
-            }
-            return "unknown route";
-        };
-        
-        ETransportationMode CurrentMode = path[0].first;
-        std::string CurrentStreet = "";
-        std::string CurrentRoute = "";
-        TNodeID StartNode = path[0].second;
-        
-        for(size_t i = 1; i < path.size(); i++) {
-            auto PrevMode = CurrentMode;
-            auto PrevNode = path[i - 1].second;
-            CurrentMode = path[i].first;
-            auto CurrentNode = path[i].second;
+            };
             
-            // Mode change
-            if(PrevMode != CurrentMode) {
-                if(PrevMode == ETransportationMode::Walk) {
-                    desc.push_back("Walk to " + std::to_string(PrevNode));
-                } else if(PrevMode == ETransportationMode::Bike) {
-                    desc.push_back("Bike to " + std::to_string(PrevNode));
-                } else if(PrevMode == ETransportationMode::Bus) {
-                    desc.push_back("Take bus to " + std::to_string(PrevNode));
-                }
-                
-                if(CurrentMode == ETransportationMode::Walk) {
-                    desc.push_back("Start walking");
-                } else if(CurrentMode == ETransportationMode::Bike) {
-                    desc.push_back("Start biking");
-                } else if(CurrentMode == ETransportationMode::Bus) {
-                    desc.push_back("Board bus at stop " + std::to_string(PrevNode));
-                }
-                
-                StartNode = PrevNode;
-                
-                if(CurrentMode == ETransportationMode::Bus) {
-                    CurrentRoute = GetBusRoute(PrevNode, CurrentNode);
-                    if(CurrentRoute != "unknown route") {
-                        desc.push_back("Take " + CurrentRoute);
+            auto processRoutes = [&](CTransportationPlanner::TNodeID nodeID) {
+                for(size_t RouteIndex = 0; RouteIndex < DConfig->BusSystem()->RouteCount(); RouteIndex++){
+                    auto Route = DConfig->BusSystem()->RouteByIndex(RouteIndex);
+                    // Extract stop IDs from the route
+                    std::vector<CBusSystem::TStopID> StopIDs;
+                    for (size_t i = 0; i < Route->StopCount(); i++) {
+                        StopIDs.push_back(Route->GetStopID(i));
                     }
-                } else {
-                    CurrentStreet = GetStreetName(PrevNode, CurrentNode);
-                    if(CurrentStreet != "unnamed street") {
-                        desc.push_back("Take " + CurrentStreet);
-                    }
-                }
-            } else if(CurrentMode != ETransportationMode::Bus) {
-                // Continue on same mode, check for street change
-                std::string NewStreet = GetStreetName(PrevNode, CurrentNode);
-                if(NewStreet != CurrentStreet && NewStreet != "unnamed street") {
-                    if(CurrentStreet != "") {
-                        if(CurrentMode == ETransportationMode::Walk) {
-                            desc.push_back("Walk along " + CurrentStreet + " to " + std::to_string(PrevNode));
-                        } else if(CurrentMode == ETransportationMode::Bike) {
-                            desc.push_back("Bike along " + CurrentStreet + " to " + std::to_string(PrevNode));
+                    
+                    for(size_t Index = 0; Index < StopIDs.size(); Index++){
+                        auto BusStopID = StopIDs[Index];
+                        
+                        for(size_t TransNodeIndex = 0; TransNodeIndex < DBusStops.size(); TransNodeIndex++){
+                            if(DBusStops[TransNodeIndex]->ID() == BusStopID){
+                                auto GlobalNodeID = TransNodeIndex + DStreetMapNodes.size();
+                                if((GlobalNodeID != nodeID) && (Visited.find(GlobalNodeID) == Visited.end())){
+                                    Previous[GlobalNodeID] = nodeID;
+                                    Visited.insert(GlobalNodeID);
+                                    Queue.push(GlobalNodeID);
+                                }
+                                break;
+                            }
                         }
                     }
-                    desc.push_back("Take " + NewStreet);
-                    CurrentStreet = NewStreet;
-                    StartNode = PrevNode;
                 }
-            } else {
-                // Continue on bus, check for route change
-                std::string NewRoute = GetBusRoute(PrevNode, CurrentNode);
-                if(NewRoute != CurrentRoute && NewRoute != "unknown route") {
-                    if(CurrentRoute != "") {
-                        desc.push_back("Take bus route " + CurrentRoute + " to " + std::to_string(PrevNode));
-                    }
-                    desc.push_back("Transfer to bus route " + NewRoute + " at stop " + std::to_string(PrevNode));
-                    CurrentRoute = NewRoute;
-                    StartNode = PrevNode;
-                }
-            }
+            };
+            
+            // Process all ways for street map nodes
+            processWays(CurrentID);
+            
+            // Process all routes for bus stops
+            processRoutes(CurrentID);
         }
         
-        // Add final segment
-        TNodeID FinalNode = path.back().second;
-        if(CurrentMode == ETransportationMode::Walk) {
-            if(CurrentStreet != "") {
-                desc.push_back("Walk along " + CurrentStreet + " to " + std::to_string(FinalNode));
-            } else {
-                desc.push_back("Walk to " + std::to_string(FinalNode));
-            }
-        } else if(CurrentMode == ETransportationMode::Bike) {
-            if(CurrentStreet != "") {
-                desc.push_back("Bike along " + CurrentStreet + " to " + std::to_string(FinalNode));
-            } else {
-                desc.push_back("Bike to " + std::to_string(FinalNode));
-            }
-        } else if(CurrentMode == ETransportationMode::Bus) {
-            if(CurrentRoute != "") {
-                desc.push_back("Take bus route " + CurrentRoute + " to " + std::to_string(FinalNode));
-            } else {
-                desc.push_back("Take bus to " + std::to_string(FinalNode));
-            }
-            desc.push_back("Exit bus at stop " + std::to_string(FinalNode));
-        }
-        
-        return true;
+        return false;
     }
 };
 
-CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<SConfiguration> config) {
+CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<SConfiguration> config){
     DImplementation = std::make_unique<SImplementation>(config);
+    DImplementation->PrecomputePaths();
 }
 
-CDijkstraTransportationPlanner::~CDijkstraTransportationPlanner() {
+CDijkstraTransportationPlanner::~CDijkstraTransportationPlanner(){
     
 }
 
-std::size_t CDijkstraTransportationPlanner::NodeCount() const noexcept {
+std::size_t CDijkstraTransportationPlanner::NodeCount() const noexcept{
     return DImplementation->DNodes.size();
 }
 
-std::shared_ptr<CStreetMap::SNode> CDijkstraTransportationPlanner::SortedNodeByIndex(std::size_t index) const noexcept {
-    if(index < DImplementation->DNodes.size()) {
-        return DImplementation->DNodes[index];
+CTransportationPlanner::TNodeID CDijkstraTransportationPlanner::GetNodeID(const CStreetMap::TNodeID &nodeid) const noexcept{
+    for(size_t Index = 0; Index < DImplementation->DStreetMapNodes.size(); Index++){
+        if(DImplementation->DStreetMapNodes[Index]->ID() == nodeid){
+            return Index;
+        }
     }
-    return nullptr;
+    return std::numeric_limits<CTransportationPlanner::TNodeID>::max();
 }
 
-double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
-    return DImplementation->FindShortestPath(src, dest, path);
+CTransportationPlanner::TNodeID CDijkstraTransportationPlanner::GetNodeID(const CBusSystem::TStopID &stopid) const noexcept{
+    for(size_t Index = 0; Index < DImplementation->DBusStops.size(); Index++){
+        if(DImplementation->DBusStops[Index]->ID() == stopid){
+            return Index + DImplementation->DStreetMapNodes.size();
+        }
+    }
+    return std::numeric_limits<CTransportationPlanner::TNodeID>::max();
 }
 
-double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
+CStreetMap::TNodeID CDijkstraTransportationPlanner::GetStreetMapNodeID(TNodeID id) const noexcept{
+    if(id < DImplementation->DStreetMapNodes.size()){
+        return DImplementation->DStreetMapNodes[id]->ID();
+    }
+    return std::numeric_limits<CStreetMap::TNodeID>::max();
+}
+
+CBusSystem::TStopID CDijkstraTransportationPlanner::GetBusSystemStopID(TNodeID id) const noexcept{
+    auto BusIndex = id - DImplementation->DStreetMapNodes.size();
+    if(BusIndex < DImplementation->DBusStops.size()){
+        return DImplementation->DBusStops[BusIndex]->ID();
+    }
+    return std::numeric_limits<CBusSystem::TStopID>::max();
+}
+
+std::pair<double, double> CDijkstraTransportationPlanner::GetNodeLocation(TNodeID id) const noexcept{
+    if(id < DImplementation->DNodes.size()){
+        return DImplementation->DNodes[id].Location;
+    }
+    return std::make_pair(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
+}
+
+double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) noexcept{
     return DImplementation->FindFastestPath(src, dest, path);
 }
 
-bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripStep> &path, std::vector<std::string> &desc) const {
-    return DImplementation->GetPathDescription(path, desc);
+double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<std::pair<ETransportationMode, TNodeID>> &path) noexcept{
+    return DImplementation->FindFastestPath(src, dest, path);
+}
+
+bool CDijkstraTransportationPlanner::FindPathWithFewestNodes(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) noexcept{
+    return DImplementation->FindPathByFewestNodes(src, dest, path);
 }
