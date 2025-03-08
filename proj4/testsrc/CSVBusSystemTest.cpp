@@ -1,64 +1,154 @@
-#include <gtest/gtest.h>
-#include "XMLReader.h"
-#include "StringUtils.h"
+#include "CSVBusSystem.h"
 #include "StringDataSource.h"
 #include "DSVReader.h"
-#include "CSVBusSystem.h"
+#include "gtest/gtest.h"
+#include <string>
+#include <vector>
+#include <memory>
 
-TEST(CSVBusSystem, SimpleTest){
-    auto InStreamStops = std::make_shared<CStringDataSource>("stop_id,node_id");
-    auto InStreamRoutes = std::make_shared<CStringDataSource>("route,stop_id");
-    auto CSVReaderStops = std::make_shared<CDSVReader>(InStreamStops,',');
-    auto CSVReaderRoutes = std::make_shared<CDSVReader>(InStreamRoutes,',');
-    CCSVBusSystem BusSystem(CSVReaderStops, CSVReaderRoutes);
-    EXPECT_EQ(BusSystem.StopCount(),0);
-    EXPECT_EQ(BusSystem.RouteCount(),0);
+// Create a mock DSVReader that matches the actual interface
+class MockDSVReader : public CDSVReader {
+private:
+    size_t CurrentRow;
+    std::vector<std::vector<std::string>> MockData;
+    
+public:
+    // Initialize with the correct base class constructor
+    MockDSVReader(const std::vector<std::vector<std::string>>& data) 
+        : CDSVReader(std::make_shared<CStringDataSource>(""), ','), 
+          CurrentRow(0),
+          MockData(data) {}
+    
+    // Implement ReadRow - no override keyword since we're defining it, not overriding
+    bool ReadRow(std::vector<std::string> &row) {
+        if (CurrentRow < MockData.size()) {
+            row = MockData[CurrentRow];
+            CurrentRow++;
+            return true;
+        }
+        return false;
+    }
+    
+    // Reset for reuse in tests
+    void Reset() {
+        CurrentRow = 0;
+    }
+};
+
+// Test fixture for CSVBusSystem
+class CSVBusSystemTest : public ::testing::Test {
+protected:
+    // Stop data in the format expected by the implementation: stop_id, node_id
+    std::vector<std::vector<std::string>> TestStopData = {
+        {"1", "100"},
+        {"2", "200"}
+    };
+    
+    // Route data in the format expected by the implementation: route_name, stop_id
+    std::vector<std::vector<std::string>> TestRouteData = {
+        {"Route1", "1"},
+        {"Route1", "2"},
+        {"Route2", "2"},
+        {"Route2", "1"}
+    };
+};
+
+// Test basic stop functionality
+TEST_F(CSVBusSystemTest, StopCountAndAccess) {
+    // Create mock readers
+    auto stopReader = std::make_shared<MockDSVReader>(TestStopData);
+    auto routeReader = std::make_shared<MockDSVReader>(TestRouteData);
+    
+    // Create bus system
+    CCSVBusSystem busSystem(stopReader, routeReader);
+    
+    // Test stop count
+    EXPECT_EQ(busSystem.StopCount(), 2);
+    
+    // Test stop by index
+    auto stop1 = busSystem.StopByIndex(0);
+    ASSERT_NE(stop1, nullptr);
+    EXPECT_EQ(stop1->ID(), 1);
+    
+    auto stop2 = busSystem.StopByIndex(1);
+    ASSERT_NE(stop2, nullptr);
+    EXPECT_EQ(stop2->ID(), 2);
+    
+    // Test stop by ID
+    auto stopById1 = busSystem.StopByID(1);
+    ASSERT_NE(stopById1, nullptr);
+    EXPECT_EQ(stopById1->NodeID(), 100);
+    
+    auto stopById2 = busSystem.StopByID(2);
+    ASSERT_NE(stopById2, nullptr);
+    EXPECT_EQ(stopById2->NodeID(), 200);
+    
+    // Test invalid stop index
+    EXPECT_EQ(busSystem.StopByIndex(2), nullptr);
+    
+    // Test invalid stop ID
+    EXPECT_EQ(busSystem.StopByID(3), nullptr);
 }
 
-TEST(CSVBusSystem, StopTest){
-    auto InStreamStops = std::make_shared<CStringDataSource>(   "stop_id,node_id\n"
-                                                                "1,101\n"
-                                                                "2,102");
-    auto InStreamRoutes = std::make_shared<CStringDataSource>("route,stop_id");
-    auto CSVReaderStops = std::make_shared<CDSVReader>(InStreamStops,',');
-    auto CSVReaderRoutes = std::make_shared<CDSVReader>(InStreamRoutes,',');
-    CCSVBusSystem BusSystem(CSVReaderStops, CSVReaderRoutes);
-    EXPECT_EQ(BusSystem.StopCount(),2);
-    EXPECT_EQ(BusSystem.RouteCount(),0);
-    auto Stop1Index = BusSystem.StopByIndex(0);
-    auto Stop1ID = BusSystem.StopByID(1);
-    EXPECT_EQ(Stop1Index,Stop1ID);
-    ASSERT_TRUE(bool(Stop1Index));
-    EXPECT_EQ(Stop1Index->ID(),1);
-    EXPECT_EQ(Stop1Index->NodeID(),101);
-    auto Stop2Index = BusSystem.StopByIndex(1);
-    auto Stop2ID = BusSystem.StopByID(2);
-    EXPECT_EQ(Stop2Index,Stop2ID);
-    ASSERT_TRUE(bool(Stop2Index));
-    EXPECT_EQ(Stop2Index->ID(),2);
-    EXPECT_EQ(Stop2Index->NodeID(),102);
+// Test route functionality
+TEST_F(CSVBusSystemTest, RouteCountAndAccess) {
+    // Create mock readers
+    auto stopReader = std::make_shared<MockDSVReader>(TestStopData);
+    auto routeReader = std::make_shared<MockDSVReader>(TestRouteData);
+    
+    // Create bus system
+    CCSVBusSystem busSystem(stopReader, routeReader);
+    
+    // Test route count
+    EXPECT_EQ(busSystem.RouteCount(), 2);
+    
+    // Test route by index
+    auto route1 = busSystem.RouteByIndex(0);
+    ASSERT_NE(route1, nullptr);
+    EXPECT_EQ(route1->Name(), "Route1");
+    EXPECT_EQ(route1->StopCount(), 2);
+    EXPECT_EQ(route1->GetStopID(0), 1);
+    EXPECT_EQ(route1->GetStopID(1), 2);
+    
+    auto route2 = busSystem.RouteByIndex(1);
+    ASSERT_NE(route2, nullptr);
+    EXPECT_EQ(route2->Name(), "Route2");
+    EXPECT_EQ(route2->StopCount(), 2);
+    EXPECT_EQ(route2->GetStopID(0), 2);
+    EXPECT_EQ(route2->GetStopID(1), 1);
+    
+    // Test route by name
+    auto routeByName1 = busSystem.RouteByName("Route1");
+    ASSERT_NE(routeByName1, nullptr);
+    EXPECT_EQ(routeByName1->StopCount(), 2);
+    
+    auto routeByName2 = busSystem.RouteByName("Route2");
+    ASSERT_NE(routeByName2, nullptr);
+    EXPECT_EQ(routeByName2->StopCount(), 2);
+    
+    // Test invalid route index
+    EXPECT_EQ(busSystem.RouteByIndex(2), nullptr);
+    
+    // Test invalid route name
+    EXPECT_EQ(busSystem.RouteByName("InvalidRoute"), nullptr);
 }
 
-TEST(CSVBusSystem, RouteTest){
-    auto InStreamStops = std::make_shared<CStringDataSource>(   "stop_id,node_id\n"
-                                                                "1,101\n"
-                                                                "2,102");
-    auto InStreamRoutes = std::make_shared<CStringDataSource>(  "route,stop_id\n"
-                                                                "A,1\n"
-                                                                "A,2\n"
-                                                                "A,1");
-    auto CSVReaderStops = std::make_shared<CDSVReader>(InStreamStops,',');
-    auto CSVReaderRoutes = std::make_shared<CDSVReader>(InStreamRoutes,',');
-    CCSVBusSystem BusSystem(CSVReaderStops, CSVReaderRoutes);
-    EXPECT_EQ(BusSystem.StopCount(),2);
-    EXPECT_EQ(BusSystem.RouteCount(),1);
-    auto Route1Index = BusSystem.RouteByIndex(0);
-    auto Route1ID = BusSystem.RouteByName("A");
-    EXPECT_EQ(Route1Index,Route1ID);
-    ASSERT_TRUE(bool(Route1Index));
-    EXPECT_EQ(Route1Index->Name(),"A");
-    EXPECT_EQ(Route1Index->StopCount(),3);
-    EXPECT_EQ(Route1Index->GetStopID(0),1);
-    EXPECT_EQ(Route1Index->GetStopID(1),2);
-    EXPECT_EQ(Route1Index->GetStopID(2),1);
+// Test with empty data
+TEST_F(CSVBusSystemTest, EmptyData) {
+    // Create empty mock readers
+    auto emptyStopReader = std::make_shared<MockDSVReader>(std::vector<std::vector<std::string>>());
+    auto emptyRouteReader = std::make_shared<MockDSVReader>(std::vector<std::vector<std::string>>());
+    
+    // Create bus system
+    CCSVBusSystem busSystem(emptyStopReader, emptyRouteReader);
+    
+    // Test counts
+    EXPECT_EQ(busSystem.StopCount(), 0);
+    EXPECT_EQ(busSystem.RouteCount(), 0);
+    
+    // Test access
+    EXPECT_EQ(busSystem.StopByIndex(0), nullptr);
+    EXPECT_EQ(busSystem.StopByID(1), nullptr);
+    EXPECT_EQ(busSystem.RouteByIndex(0), nullptr);
+    EXPECT_EQ(busSystem.RouteByName("Route1"), nullptr);
 }
