@@ -2,8 +2,9 @@
 #include "DSVReader.h"
 #include <unordered_map>
 #include <vector>
-#include <set>
+#include <memory>
 
+// Implementation of CCSVBusSystem
 struct CCSVBusSystem::SImplementation {
     std::shared_ptr<CDSVReader> StopsReader;
     std::shared_ptr<CDSVReader> RoutesReader;
@@ -57,7 +58,7 @@ public:
 };
 
 CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsreader, std::shared_ptr<CDSVReader> routesreader) {
-    DImplementation = std::make_shared<SImplementation>();
+    DImplementation = std::make_unique<SImplementation>();
     DImplementation->StopsReader = stopsreader;
     DImplementation->RoutesReader = routesreader;
     
