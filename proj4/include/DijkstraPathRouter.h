@@ -14,12 +14,12 @@ public:
     CDijkstraPathRouter();
     ~CDijkstraPathRouter();
 
-    std::size_t VertexCount() const noexcept;
-    TVertexID AddVertex(std::any tag) noexcept override;
-    std::any GetVertexTag(TVertexID id) const noexcept override;
-    bool AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir = false) noexcept override;
-    bool Precompute(std::chrono::steady_clock::time_point deadline) noexcept override;
+    void AddNode(TVertexID node) noexcept override;
+    void AddEdge(TVertexID src, TVertexID dest, double weight) noexcept override;
+    void AddEdge(TVertexID src, TVertexID dest, double weight, TEdgeLabel label) noexcept override;
     double FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) noexcept override;
+    double FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path, std::vector<TEdgeLabel> &labels) noexcept override;
+    bool Precompute(std::chrono::steady_clock::time_point deadline) noexcept override;
 };
 
-#endif
+#endif // DIJKSTRA_PATH_ROUTER_H
