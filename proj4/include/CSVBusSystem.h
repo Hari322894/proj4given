@@ -1,29 +1,51 @@
-#ifndef CSV_BUS_SYSTEM_H
-#define CSV_BUS_SYSTEM_H
+#ifndef CSVBUSSYSTEM_H
+#define CSVBUSSYSTEM_H
 
+#include <string>
+#include <vector>
+#include <memory>
 #include "BusSystem.h"
 #include "DSVReader.h"
-#include <memory>
-#include <vector>
-#include <string>
 
 class CCSVBusSystem : public CBusSystem {
 public:
-    CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_ptr<CDSVReader> routesrc);
+    class SStop : public CBusSystem::SStop {
+    public:
+        TStopID ID() const noexcept override;
+        std::string Name() const noexcept override;
+        double Latitude() const noexcept override;
+        double Longitude() const noexcept override;
+        CStreetMap::TNodeID NodeID() const noexcept override;
+
+        CStreetMap::TNodeID NodeIDValue; // corresponding node ID in the street map
+    };
+
+    class SRoute : public CBusSystem::SRoute {
+    public:
+        std::string Name() const noexcept override;
+        std::size_t StopCount() const noexcept override;
+        TStopID GetStopID(std::size_t index) const noexcept override;
+
+        std::vector<TStopID> StopIDs;
+    };
+
+    CCSVBusSystem(std::shared_ptr<CDSVReader> stopReader, std::shared_ptr<CDSVReader> routeReader);
     ~CCSVBusSystem();
 
     std::size_t StopCount() const noexcept override;
     std::size_t RouteCount() const noexcept override;
-    std::shared_ptr<CBusSystem::SStop> StopByIndex(std::size_t index) const noexcept override;
-    std::shared_ptr<CBusSystem::SStop> StopByID(TStopID id) const noexcept override;
-    std::shared_ptr<CBusSystem::SRoute> RouteByIndex(std::size_t index) const noexcept override;
-    std::shared_ptr<CBusSystem::SRoute> RouteByName(const std::string &name) const noexcept override;
+    std::shared_ptr<SStop> StopByIndex(std::size_t index) const noexcept override;
+    std::shared_ptr<SRoute> RouteByIndex(std::size_t index) const noexcept override;
+    std::shared_ptr<SStop> StopByID(TStopID id) const noexcept override;
+    std::shared_ptr<SRoute> RouteByName(const std::string &name) const noexcept override;
 
 private:
-    struct SStop;
-    struct SRoute;
-    struct SImplementation;
-    std::unique_ptr<SImplementation> DImplementation;
+    std::vector<std::shared_ptr<SStop>> DStops;
+    std::vector<std::shared_ptr<SRoute>> DRoutes;
+    std::unordered_map<TStopID, std::shared_ptr<SStop>> DStopIDMap;
+    std::unordered_map<std::string, std::shared_ptr<SRoute>> DRouteNameMap;
 };
 
-#endif // CSV_BUS_SYSTEM_H
+std::ostream &operator<<(std::ostream &os, const CCSVBusSystem &busSystem);
+
+#endif
