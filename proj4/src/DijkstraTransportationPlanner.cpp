@@ -2,7 +2,6 @@
 #include "DijkstraTransportationPlanner.h"
 #include "TransportationPlanner.h"
 #include "PathRouter.h"
-#include "DijkstraPathRouter.h"
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -43,8 +42,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
         BusSpeed = config->DefaultSpeedLimit();
         BusStopTime = config->BusStopTime();
         
-        ShortestPathRouter = std::make_unique<CDijkstraPathRouter>();
-        FastestPathRouter = std::make_unique<CDijkstraPathRouter>();
+        // Use the CreatePathRouter static method from CPathRouter instead of direct constructor
+        ShortestPathRouter = CPathRouter::CreatePathRouter();
+        FastestPathRouter = CPathRouter::CreatePathRouter();
         
         // Prepare sorted nodes for SortedNodeByIndex
         for(std::size_t i = 0; i < StreetMap->NodeCount(); i++){
@@ -60,8 +60,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
         // Add nodes/vertices to path routers
         for(auto& Node : SortedNodes){
             auto NodeID = Node->ID();
-            ShortestPathRouter->AddVertex(NodeID);
-            FastestPathRouter->AddVertex(NodeID);
+            ShortestPathRouter->AddNode(NodeID);  // Changed from AddVertex to AddNode
+            FastestPathRouter->AddNode(NodeID);   // Changed from AddVertex to AddNode
         }
         
         // Add edges for ways/streets
@@ -94,7 +94,22 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 FastestPathRouter->AddEdge(src, dest, WalkTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Walk));
                 FastestPathRouter->AddEdge(dest, src, WalkTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Walk));
                 
-                if(Way->GetAttribute("bicycle") != "no" && Way->GetAttribute("highway") != "motorway"){
+                // Check if biking is allowed
+                std::string BikeAttr = "yes";
+                std::string HighwayAttr = "";
+                try {
+                    BikeAttr = Way->GetAttribute("bicycle");
+                } catch(...) {
+                    // Attribute not found, assume biking is allowed
+                }
+                
+                try {
+                    HighwayAttr = Way->GetAttribute("highway");
+                } catch(...) {
+                    // Attribute not found
+                }
+                
+                if(BikeAttr != "no" && HighwayAttr != "motorway"){
                     FastestPathRouter->AddEdge(src, dest, BikeTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Bike));
                     FastestPathRouter->AddEdge(dest, src, BikeTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Bike));
                     
@@ -106,45 +121,55 @@ struct CDijkstraTransportationPlanner::SImplementation {
         
         // Add bus routes
         if(BusSystem){
-            // Initialize BusRoutes
+            // Process all bus routes and stops
             for(std::size_t routeIndex = 0; routeIndex < BusSystem->RouteCount(); routeIndex++){
-                auto RouteID = routeIndex; // Use index as RouteID if missing GetRouteID method
+                auto Route = BusSystem->RouteByIndex(routeIndex);
+                if(!Route) continue;
                 
-                for(std::size_t stopIndex = 1; stopIndex < BusSystem->StopCount(RouteID); stopIndex++){
-                    TNodeID prevStop = BusSystem->StopID(RouteID, stopIndex - 1);
-                    TNodeID currStop = BusSystem->StopID(RouteID, stopIndex);
+                auto RouteID = routeIndex; // Use index as RouteID
+                
+                for(std::size_t stopIndex = 1; stopIndex < Route->StopCount(); stopIndex++){
+                    CBusSystem::TStopID prevStopID = Route->GetStopID(stopIndex - 1);
+                    CBusSystem::TStopID currStopID = Route->GetStopID(stopIndex);
+                    
+                    auto prevStop = BusSystem->StopByID(prevStopID);
+                    auto currStop = BusSystem->StopByID(currStopID);
+                    
+                    if(!prevStop || !currStop) continue;
+                    
+                    TNodeID prevNodeID = prevStop->NodeID();
+                    TNodeID currNodeID = currStop->NodeID();
                     
                     // Record the bus route between these stops
-                    BusRoutes[prevStop].push_back({currStop, RouteID});
+                    BusRoutes[prevNodeID].push_back({currNodeID, RouteID});
                     
-                    // Calculate bus travel time between stops
-                    double BusTime = 0;
-                    if(BusSystem->IncludesTimeData()){
-                        BusTime = BusSystem->StopTime(RouteID, stopIndex) - 
-                                 BusSystem->StopTime(RouteID, stopIndex - 1);
-                    }
-                    else {
-                        // If no time data, estimate based on distance and bus speed
-                        auto SrcNode = StreetMap->NodeByID(prevStop);
-                        auto DestNode = StreetMap->NodeByID(currStop);
+                    // Calculate bus travel time between stops (estimate based on distance and bus speed)
+                    auto SrcNode = StreetMap->NodeByID(prevNodeID);
+                    auto DestNode = StreetMap->NodeByID(currNodeID);
+                    
+                    if(SrcNode && DestNode){
+                        double LatDiff = SrcNode->GetLatitude() - DestNode->GetLatitude();
+                        double LonDiff = SrcNode->GetLongitude() - DestNode->GetLongitude();
+                        double Distance = std::sqrt(LatDiff * LatDiff + LonDiff * LonDiff);
+                        double BusTime = Distance / BusSpeed;
                         
-                        if(SrcNode && DestNode){
-                            double LatDiff = SrcNode->GetLatitude() - DestNode->GetLatitude();
-                            double LonDiff = SrcNode->GetLongitude() - DestNode->GetLongitude();
-                            double Distance = std::sqrt(LatDiff * LatDiff + LonDiff * LonDiff);
-                            BusTime = Distance / BusSpeed;
+                        // Add bus stop time
+                        BusTime += BusStopTime;
+                        
+                        if(BusTime > 0){
+                            FastestPathRouter->AddEdge(prevNodeID, currNodeID, BusTime, 
+                                                      static_cast<int>(CTransportationPlanner::ETransportationMode::Bus));
                         }
-                    }
-                    
-                    // Add bus stop time
-                    BusTime += BusStopTime;
-                    
-                    if(BusTime > 0){
-                        FastestPathRouter->AddEdge(prevStop, currStop, BusTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Bus));
                     }
                 }
             }
         }
+        
+        // Precompute the paths based on the configuration
+        auto deadline = std::chrono::steady_clock::now() + 
+                        std::chrono::seconds(config->PrecomputeTime());
+        ShortestPathRouter->Precompute(deadline);
+        FastestPathRouter->Precompute(deadline);
     }
 };
 
@@ -172,7 +197,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     std::vector<CPathRouter::TVertexID> pathVertices;
     double distance = DImplementation->ShortestPathRouter->FindShortestPath(src, dest, pathVertices);
     
-    if(distance != std::numeric_limits<double>::max()) {
+    if(distance != CPathRouter::NoPathExists) {
         for(auto vertex : pathVertices) {
             path.push_back(static_cast<TNodeID>(vertex));
         }
@@ -185,11 +210,11 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     path.clear();
     
     std::vector<CPathRouter::TVertexID> pathVertices;
-    std::vector<int> edgeLabels;
+    std::vector<CPathRouter::TEdgeLabel> edgeLabels;
     
     double time = DImplementation->FastestPathRouter->FindShortestPath(src, dest, pathVertices, edgeLabels);
     
-    if(time != std::numeric_limits<double>::max() && !pathVertices.empty()) {
+    if(time != CPathRouter::NoPathExists && !pathVertices.empty()) {
         // Add the first node with default mode (or could be determined by first edge)
         ETransportationMode firstMode = ETransportationMode::Walk;
         if(!edgeLabels.empty()) {
@@ -260,9 +285,10 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             else if(currentMode == ETransportationMode::Bus){
                 // Bus route description
                 if(currentBusRoute != SImplementation::InvalidRouteID){
+                    auto Route = BusSystemObj->RouteByIndex(currentBusRoute);
                     std::string routeName = "Route " + std::to_string(currentBusRoute);
-                    if(BusSystemObj->IncludesRouteNames()) {
-                        routeName = BusSystemObj->RouteName(currentBusRoute);
+                    if(Route) {
+                        routeName = Route->Name();
                     }
                     ss << "Take bus route " << routeName;
                     description.push_back(ss.str());
@@ -301,9 +327,10 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
                         if(nextBusRoute != currentBusRoute) {
                             // Bus route change
                             if(currentBusRoute != SImplementation::InvalidRouteID) {
+                                auto Route = BusSystemObj->RouteByIndex(currentBusRoute);
                                 std::string routeName = "Route " + std::to_string(currentBusRoute);
-                                if(BusSystemObj->IncludesRouteNames()) {
-                                    routeName = BusSystemObj->RouteName(currentBusRoute);
+                                if(Route) {
+                                    routeName = Route->Name();
                                 }
                                 ss << "Take bus route " << routeName;
                                 description.push_back(ss.str());
@@ -330,9 +357,10 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             }
             else if(currentMode == ETransportationMode::Bus){
                 if(currentBusRoute != SImplementation::InvalidRouteID){
+                    auto Route = BusSystemObj->RouteByIndex(currentBusRoute);
                     std::string routeName = "Route " + std::to_string(currentBusRoute);
-                    if(BusSystemObj->IncludesRouteNames()) {
-                        routeName = BusSystemObj->RouteName(currentBusRoute);
+                    if(Route) {
+                        routeName = Route->Name();
                     }
                     ss << "Take bus route " << routeName;
                     description.push_back(ss.str());
