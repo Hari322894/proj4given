@@ -1,42 +1,63 @@
 #include "DijkstraPathRouter.h"
 #include <algorithm>
+#include <queue>
 #include <any>
 #include <memory>
+#include <limits>
+#include <unordered_set>
+
+struct CDijkstraPathRouter::SImplementation {
+    struct SVertex {
+        std::any Tag;
+        std::unordered_map<TVertexID, double> DNeighbors;
+    };
+
+    std::vector<SVertex> DVertices;
+};
 
 CDijkstraPathRouter::CDijkstraPathRouter() {
     DImplementation = std::make_unique<SImplementation>();
 }
 
-CDijkstraPathRouter::TVertexID CDijkstraPathRouter::AddVertex(std::any tag) noexcept {
-    DImplementation->DVertices.emplace_back(SVertex{tag});
+CDijkstraPathRouter::~CDijkstraPathRouter() = default;
+
+std::size_t CDijkstraPathRouter::VertexCount() const noexcept {
+    return DImplementation->DVertices.size();
+}
+
+CPathRouter::TVertexID CDijkstraPathRouter::AddVertex(std::any tag) noexcept {
+    DImplementation->DVertices.emplace_back(SImplementation::SVertex{tag});
     return DImplementation->DVertices.size() - 1;
 }
 
 std::any CDijkstraPathRouter::GetVertexTag(TVertexID id) const noexcept {
-    if (id >= 0 && id < DImplementation->DVertices.size()) {
+    if (id >= 0 && id < static_cast<TVertexID>(DImplementation->DVertices.size())) {
         return DImplementation->DVertices[id].Tag;
     }
     return {};
 }
 
-bool CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, bool bidirectional) noexcept {
-    if (src >= DImplementation->DVertices.size() || dest >= DImplementation->DVertices.size() || weight < 0) {
+bool CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir) noexcept {
+    if (src >= static_cast<TVertexID>(DImplementation->DVertices.size()) || 
+        dest >= static_cast<TVertexID>(DImplementation->DVertices.size()) || 
+        weight < 0) {
         return false;
     }
     DImplementation->DVertices[src].DNeighbors[dest] = weight;
-    if (bidirectional) {
+    if (bidir) {
         DImplementation->DVertices[dest].DNeighbors[src] = weight;
     }
     return true;
 }
 
 double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID>& path) noexcept {
-    if (src >= DImplementation->DVertices.size() || dest >= DImplementation->DVertices.size()) {
-        return NoPathExists;
+    if (src >= static_cast<TVertexID>(DImplementation->DVertices.size()) || 
+        dest >= static_cast<TVertexID>(DImplementation->DVertices.size())) {
+        return CPathRouter::NoPathExists;
     }
 
     std::vector<double> dist(DImplementation->DVertices.size(), std::numeric_limits<double>::infinity());
-    std::vector<TVertexID> previous(DImplementation->DVertices.size(), InvalidVertexID);
+    std::vector<TVertexID> previous(DImplementation->DVertices.size(), CPathRouter::InvalidVertexID);
     std::unordered_set<TVertexID> visited;
     dist[src] = 0;
 
@@ -50,10 +71,11 @@ double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std:
         queue.pop();
 
         if (u == dest) {
-            while (previous[u] != InvalidVertexID) {
+            while (previous[u] != CPathRouter::InvalidVertexID) {
                 path.push_back(u);
                 u = previous[u];
             }
+            path.push_back(src);
             std::reverse(path.begin(), path.end());
             return dist[dest];
         }
@@ -72,5 +94,10 @@ double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std:
         }
     }
 
-    return NoPathExists;
+    return CPathRouter::NoPathExists;
+}
+
+bool CDijkstraPathRouter::Precompute(std::chrono::steady_clock::time_point deadline) noexcept {
+    // This function is currently a placeholder and does not perform any precomputation.
+    return true;
 }
