@@ -1,342 +1,180 @@
 #include "DijkstraPathRouter.h"
-#include <algorithm>
-#include <queue>
-#include <unordered_set>
-#include <any>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
-#include <limits>
+#include <iostream>
+#include <queue>
+#include <algorithm>
 
-struct CDijkstraPathRouter::SImplementation {
-    struct SVertex {
-        std::unordered_map<TVertexID, double> DNeighbors;
-        std::unordered_map<TVertexID, TEdgeLabel> DLabels;
+struct CDijkstraPathRouter::SImplementation{
+    struct IndVertex{
+        TVertexID ThisVertexID;
+        std::any ThisVertexTag;
+        std::vector< TVertexID > ConnectedIDs;
+        std::unordered_map<TVertexID,double> MapOfWeights;
+
+        ~IndVertex(){};
+        TVertexID GetVertexID(){
+            return ThisVertexID;
+        }
+
+        std::any GetThisVertexTag(){
+            return ThisVertexTag;
+        }
+
+        std::size_t ConnectedIDCount(){
+            return ConnectedIDs.size();
+        }
+        
+        std::vector< TVertexID > GetConnectedVertexIDs(){
+            return ConnectedIDs;
+        }
+
+        double GetWeight(TVertexID &id){
+            auto Search = MapOfWeights.find(id);
+
+            if(Search == MapOfWeights.end()){
+                return false;
+
+            }
+            return Search->second;
+        }
+
     };
 
-    std::vector<SVertex> DVertices;
+   // std::vector<size_t> ListOfVertices;//A vector of index or IDs
+    std::vector< std::shared_ptr< IndVertex > > AllVertices;
+   // std::unordered_map<TVertexID, std::shared_ptr< IndVertex > > MapOfVertices;//a map of the index(orID) to the IndVertex
+    size_t IndexKeeper = -1;
     
-    // Add precomputed paths storage
-    std::unordered_map<TVertexID, std::unordered_map<TVertexID, std::pair<double, std::vector<TVertexID>>>> PrecomputedPaths;
-    std::unordered_map<TVertexID, std::unordered_map<TVertexID, std::vector<TEdgeLabel>>> PrecomputedLabels;
-    bool HasPrecomputed = false;
+
+
+
+    
+    SImplementation(){
+
+    };
+
+    std::size_t VertexCount() const{
+        return AllVertices.size();
+    };
+
+    TVertexID AddVertex(std::any tag){
+        auto NewVertex = std::make_shared<IndVertex>();
+        IndexKeeper += 1;
+        NewVertex->ThisVertexID = IndexKeeper;
+        NewVertex->ThisVertexTag = tag;
+        AllVertices.push_back(NewVertex);
+        return IndexKeeper;
+    };
+    
+    std::any GetVertexTag(TVertexID id) const{
+        return AllVertices[id]->GetThisVertexTag();
+    };
+    
+    
+    bool AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir = false) {
+        if (weight > 0)
+        {
+            if (bidir){
+                //std::cout<<"BIDIR IS TRUE"<<std::endl;
+                AllVertices[src]->ConnectedIDs.push_back(dest);
+            }
+            AllVertices[src]->MapOfWeights.insert({dest,weight});
+            AllVertices[src]->ConnectedIDs.push_back(dest);
+            return true;
+        }
+        return false;
+    };
+    
+    bool Precompute(std::chrono::steady_clock::time_point deadline) {
+        return true;
+    };
+
+    double FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) {
+        std::unordered_map <TVertexID, std::pair<double, TVertexID>> DP;
+        std::priority_queue <TVertexID> pq;
+        for (int i = 0; i < VertexCount(); i++)
+        {
+            std::pair<double, TVertexID> V;
+            V.first = std::numeric_limits<double>::infinity();
+            V.second = -1;
+            DP.insert({AllVertices[i]->GetVertexID(), V});
+        }
+
+        DP[src].first = 0;
+        DP[src].second = src;
+
+        pq.push(src);
+        //finish initialize
+
+        while(!pq.empty())
+        {
+            TVertexID u = pq.top();
+            pq.pop();
+            for(int i = 0; i < AllVertices[u]->ConnectedIDCount(); i++)
+            {
+                TVertexID v = AllVertices[u]->GetConnectedVertexIDs()[i];
+                double w = AllVertices[u]->GetWeight(AllVertices[u]->GetConnectedVertexIDs()[i]);
+
+                if(DP[v].first > DP[u].first + w)
+                {
+                    DP[v].first = DP[u].first + w;
+                    DP[v].second = u;
+                    pq.push(v);
+                }
+            }
+        }
+        
+        //check the path
+        TVertexID current = dest;
+        while(current != src)
+        {
+            path.push_back(current);
+            current = DP[current].second;
+        }
+        path.push_back(current);
+        reverse(path.begin(),path.end());
+
+        if(DP[dest].first == std::numeric_limits<double>::infinity())
+        {
+            return NoPathExists;
+        }
+        return DP[dest].first;
+    };
+
+};
+//---------------------------------------------
+CDijkstraPathRouter::CDijkstraPathRouter(){
+    DImplementation = std::make_unique<SImplementation>();
+
 };
 
-CDijkstraPathRouter::CDijkstraPathRouter() {
-    DImplementation = std::make_unique<SImplementation>();
-}
+CDijkstraPathRouter::~CDijkstraPathRouter(){
+    
+};
 
-CDijkstraPathRouter::~CDijkstraPathRouter() = default;
+std::size_t CDijkstraPathRouter::VertexCount() const noexcept{
+    return DImplementation->VertexCount();
+};
 
-void CDijkstraPathRouter::AddNode(TVertexID node) noexcept {
-    if (node >= static_cast<TVertexID>(DImplementation->DVertices.size())) {
-        DImplementation->DVertices.resize(node + 1);
-    }
-}
+CPathRouter::TVertexID CDijkstraPathRouter::AddVertex(std::any tag) noexcept{
+    return DImplementation->AddVertex(tag);
+};
 
-void CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight) noexcept {
-    if (src < static_cast<TVertexID>(DImplementation->DVertices.size()) && 
-        dest < static_cast<TVertexID>(DImplementation->DVertices.size()) && 
-        weight >= 0) {
-        DImplementation->DVertices[src].DNeighbors[dest] = weight;
-    }
-}
+std::any CDijkstraPathRouter::GetVertexTag(TVertexID id) const noexcept{
+    return DImplementation->GetVertexTag(id);
+};
 
-void CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, TEdgeLabel label) noexcept {
-    if (src < static_cast<TVertexID>(DImplementation->DVertices.size()) && 
-        dest < static_cast<TVertexID>(DImplementation->DVertices.size()) && 
-        weight >= 0) {
-        DImplementation->DVertices[src].DNeighbors[dest] = weight;
-        DImplementation->DVertices[src].DLabels[dest] = label;
-    }
-}
+bool CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir) noexcept{
+    return DImplementation->AddEdge(src, dest, weight, bidir);
+};
 
-double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID>& path) noexcept {
-    path.clear();
-    
-    // Check if source or destination are invalid
-    if (src >= static_cast<TVertexID>(DImplementation->DVertices.size()) || 
-        dest >= static_cast<TVertexID>(DImplementation->DVertices.size())) {
-        return CPathRouter::NoPathExists;
-    }
-    
-    // Check if path is already precomputed
-    if (DImplementation->HasPrecomputed) {
-        auto srcIt = DImplementation->PrecomputedPaths.find(src);
-        if (srcIt != DImplementation->PrecomputedPaths.end()) {
-            auto destIt = srcIt->second.find(dest);
-            if (destIt != srcIt->second.end()) {
-                path = destIt->second.second;
-                return destIt->second.first;
-            }
-        }
-    }
+bool CDijkstraPathRouter::Precompute(std::chrono::steady_clock::time_point deadline) noexcept{
+    return DImplementation->Precompute(deadline);
+};
 
-    // If not precomputed or no precomputation, do Dijkstra
-    std::vector<double> dist(DImplementation->DVertices.size(), std::numeric_limits<double>::infinity());
-    std::vector<TVertexID> previous(DImplementation->DVertices.size(), CPathRouter::InvalidVertexID);
-    dist[src] = 0;
-
-    // Use a more efficient priority queue implementation
-    using PQElement = std::pair<double, TVertexID>;
-    std::priority_queue<PQElement, std::vector<PQElement>, std::greater<PQElement>> queue;
-    queue.push({0, src});
-    
-    // Keep track of processed vertices
-    std::vector<bool> processed(DImplementation->DVertices.size(), false);
-
-    while (!queue.empty()) {
-        auto [current_dist, u] = queue.top();
-        queue.pop();
-        
-        // Skip if we've already found a better path to this vertex
-        if (processed[u] || current_dist > dist[u]) {
-            continue;
-        }
-        
-        // Mark as processed
-        processed[u] = true;
-        
-        // Found destination
-        if (u == dest) {
-            break;
-        }
-
-        // Process all neighbors
-        for (const auto& [neighbor, weight] : DImplementation->DVertices[u].DNeighbors) {
-            if (!processed[neighbor]) {
-                double alt = dist[u] + weight;
-                if (alt < dist[neighbor]) {
-                    dist[neighbor] = alt;
-                    previous[neighbor] = u;
-                    queue.push({alt, neighbor});
-                }
-            }
-        }
-    }
-    
-    // Check if a path was found
-    if (dist[dest] == std::numeric_limits<double>::infinity()) {
-        return CPathRouter::NoPathExists;
-    }
-    
-    // Reconstruct path
-    TVertexID current = dest;
-    while (current != src) {
-        path.push_back(current);
-        current = previous[current];
-    }
-    path.push_back(src);
-    std::reverse(path.begin(), path.end());
-    
-    return dist[dest];
-}
-
-double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID>& path, std::vector<TEdgeLabel>& labels) noexcept {
-    path.clear();
-    labels.clear();
-    
-    // Check if source or destination are invalid
-    if (src >= static_cast<TVertexID>(DImplementation->DVertices.size()) || 
-        dest >= static_cast<TVertexID>(DImplementation->DVertices.size())) {
-        return CPathRouter::NoPathExists;
-    }
-    
-    // Check if path is already precomputed
-    if (DImplementation->HasPrecomputed) {
-        auto srcIt = DImplementation->PrecomputedPaths.find(src);
-        if (srcIt != DImplementation->PrecomputedPaths.end()) {
-            auto destIt = srcIt->second.find(dest);
-            if (destIt != srcIt->second.end()) {
-                auto labelsIt = DImplementation->PrecomputedLabels.find(src);
-                if (labelsIt != DImplementation->PrecomputedLabels.end()) {
-                    auto destLabelsIt = labelsIt->second.find(dest);
-                    if (destLabelsIt != labelsIt->second.end()) {
-                        path = destIt->second.second;
-                        labels = destLabelsIt->second;
-                        return destIt->second.first;
-                    }
-                }
-            }
-        }
-    }
-
-    // If not precomputed or no precomputation, do Dijkstra
-    std::vector<double> dist(DImplementation->DVertices.size(), std::numeric_limits<double>::infinity());
-    std::vector<TVertexID> previous(DImplementation->DVertices.size(), CPathRouter::InvalidVertexID);
-    dist[src] = 0;
-
-    // More efficient priority queue
-    using PQElement = std::pair<double, TVertexID>;
-    std::priority_queue<PQElement, std::vector<PQElement>, std::greater<PQElement>> queue;
-    queue.push({0, src});
-    
-    // Keep track of processed vertices
-    std::vector<bool> processed(DImplementation->DVertices.size(), false);
-
-    while (!queue.empty()) {
-        auto [current_dist, u] = queue.top();
-        queue.pop();
-        
-        // Skip if we've already found a better path or processed this vertex
-        if (processed[u] || current_dist > dist[u]) {
-            continue;
-        }
-        
-        // Mark as processed
-        processed[u] = true;
-        
-        // Found destination
-        if (u == dest) {
-            break;
-        }
-
-        // Process all neighbors
-        for (const auto& [neighbor, weight] : DImplementation->DVertices[u].DNeighbors) {
-            if (!processed[neighbor]) {
-                double alt = dist[u] + weight;
-                if (alt < dist[neighbor]) {
-                    dist[neighbor] = alt;
-                    previous[neighbor] = u;
-                    queue.push({alt, neighbor});
-                }
-            }
-        }
-    }
-    
-    // Check if a path was found
-    if (dist[dest] == std::numeric_limits<double>::infinity()) {
-        return CPathRouter::NoPathExists;
-    }
-    
-    // Reconstruct path and collect labels
-    TVertexID current = dest;
-    std::vector<TVertexID> reversePath;
-    std::vector<TEdgeLabel> reverseLabels;
-    
-    while (current != src) {
-        reversePath.push_back(current);
-        TVertexID prev = previous[current];
-        auto labelIt = DImplementation->DVertices[prev].DLabels.find(current);
-        if (labelIt != DImplementation->DVertices[prev].DLabels.end()) {
-            reverseLabels.push_back(labelIt->second);
-        }
-        current = prev;
-    }
-    reversePath.push_back(src);
-    
-    // Reverse to get correct order
-    path.reserve(reversePath.size());
-    for (auto it = reversePath.rbegin(); it != reversePath.rend(); ++it) {
-        path.push_back(*it);
-    }
-    
-    labels.reserve(reverseLabels.size());
-    for (auto it = reverseLabels.rbegin(); it != reverseLabels.rend(); ++it) {
-        labels.push_back(*it);
-    }
-    
-    return dist[dest];
-}
-
-bool CDijkstraPathRouter::Precompute(std::chrono::steady_clock::time_point deadline) noexcept {
-    if (DImplementation->HasPrecomputed) {
-        return true; // Already precomputed
-    }
-    
-    // Limit precomputation to important nodes or a subset of nodes
-    // For simplicity, let's limit to the first 100 nodes or all if fewer
-    const size_t maxNodesToPrecompute = 100;
-    
-    // Get all vertices
-    std::vector<TVertexID> vertices;
-    for (TVertexID i = 0; i < DImplementation->DVertices.size(); ++i) {
-        // Skip empty vertices (no edges)
-        if (!DImplementation->DVertices[i].DNeighbors.empty()) {
-            vertices.push_back(i);
-        }
-    }
-    
-    // Limit number of vertices to precompute if needed
-    size_t numToPrecompute = std::min(vertices.size(), maxNodesToPrecompute);
-    
-    // Precompute paths for important nodes
-    for (size_t i = 0; i < numToPrecompute && std::chrono::steady_clock::now() < deadline; ++i) {
-        TVertexID src = vertices[i];
-        
-        // Compute shortest path from this source to all destinations
-        std::vector<double> dist(DImplementation->DVertices.size(), std::numeric_limits<double>::infinity());
-        std::vector<TVertexID> previous(DImplementation->DVertices.size(), CPathRouter::InvalidVertexID);
-        dist[src] = 0;
-        
-        // Use efficient priority queue
-        using PQElement = std::pair<double, TVertexID>;
-        std::priority_queue<PQElement, std::vector<PQElement>, std::greater<PQElement>> queue;
-        queue.push({0, src});
-        
-        std::vector<bool> processed(DImplementation->DVertices.size(), false);
-        
-        // Run Dijkstra's algorithm from this source
-        while (!queue.empty() && std::chrono::steady_clock::now() < deadline) {
-            auto [current_dist, u] = queue.top();
-            queue.pop();
-            
-            if (processed[u] || current_dist > dist[u]) {
-                continue;
-            }
-            
-            processed[u] = true;
-            
-            for (const auto& [neighbor, weight] : DImplementation->DVertices[u].DNeighbors) {
-                if (!processed[neighbor]) {
-                    double alt = dist[u] + weight;
-                    if (alt < dist[neighbor]) {
-                        dist[neighbor] = alt;
-                        previous[neighbor] = u;
-                        queue.push({alt, neighbor});
-                    }
-                }
-            }
-        }
-        
-        // If we ran out of time, return partial precomputation
-        if (std::chrono::steady_clock::now() >= deadline) {
-            DImplementation->HasPrecomputed = !DImplementation->PrecomputedPaths.empty();
-            return false;
-        }
-        
-        // Store precomputed paths from this source
-        for (TVertexID dest = 0; dest < DImplementation->DVertices.size(); ++dest) {
-            if (dist[dest] != std::numeric_limits<double>::infinity() && src != dest) {
-                // Reconstruct path
-                std::vector<TVertexID> path;
-                std::vector<TEdgeLabel> edgeLabels;
-                
-                TVertexID current = dest;
-                while (current != src) {
-                    path.push_back(current);
-                    TVertexID prev = previous[current];
-                    
-                    // Get edge label if exists
-                    auto labelIt = DImplementation->DVertices[prev].DLabels.find(current);
-                    if (labelIt != DImplementation->DVertices[prev].DLabels.end()) {
-                        edgeLabels.push_back(labelIt->second);
-                    }
-                    
-                    current = prev;
-                }
-                path.push_back(src);
-                
-                // Reverse to get correct order
-                std::reverse(path.begin(), path.end());
-                std::reverse(edgeLabels.begin(), edgeLabels.end());
-                
-                // Store precomputed path
-                DImplementation->PrecomputedPaths[src][dest] = {dist[dest], path};
-                DImplementation->PrecomputedLabels[src][dest] = edgeLabels;
-            }
-        }
-    }
-    
-    DImplementation->HasPrecomputed = true;
-    return true;
-}
+double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) noexcept{
+    return DImplementation->FindShortestPath(src, dest, path);
+};
