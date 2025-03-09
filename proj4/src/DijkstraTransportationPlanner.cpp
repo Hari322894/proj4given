@@ -228,10 +228,6 @@ struct CDijkstraTransportationPlanner::SImplementation{
             return std::to_string(node) + "-" + std::to_string(static_cast<int>(mode));
         };
         
-        // Initialize sources with different modes
-        PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Walking, src}});
-        PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Biking, src}});
-        
         // Initialize all states with infinity
         for(size_t Index = 0; Index < DNodes.size(); Index++){
             ShortestTime[CreateStateKey(Index, CTransportationPlanner::ETransportationMode::Walking)] = std::numeric_limits<double>::max();
@@ -242,6 +238,13 @@ struct CDijkstraTransportationPlanner::SImplementation{
         // Set initial states
         ShortestTime[CreateStateKey(src, CTransportationPlanner::ETransportationMode::Walking)] = 0.0;
         ShortestTime[CreateStateKey(src, CTransportationPlanner::ETransportationMode::Biking)] = 0.0;
+        
+        // Initialize sources with different modes
+        PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Walking, src}});
+        PriorityQueue.push({0.0, {src, CTransportationPlanner::ETransportationMode::Biking, src}});
+        
+        // Keep track of processed nodes to avoid infinite loops
+        std::set<std::string> Processed;
         
         // Run Dijkstra's algorithm
         while(!PriorityQueue.empty()){
@@ -258,6 +261,14 @@ struct CDijkstraTransportationPlanner::SImplementation{
             if(CurrentTime > ShortestTime[StateKey]){
                 continue;
             }
+            
+            // Skip if we've already processed this state
+            if(Processed.find(StateKey) != Processed.end()){
+                continue;
+            }
+            
+            // Mark this state as processed
+            Processed.insert(StateKey);
             
             // If we've reached the destination, we're done
             if(CurrentIndex == dest){
@@ -278,23 +289,28 @@ struct CDijkstraTransportationPlanner::SImplementation{
                 return CurrentTime;
             }
             
-            // Consider all neighbors based on the current mode
+            // Consider all transitions based on the current mode
             if(CurrentMode == CTransportationPlanner::ETransportationMode::Walking){
-                // Get direct neighbors only, not full paths
+                // Only process direct neighbors from the walking router
+                std::vector<CTransportationPlanner::TNodeID> neighbors;
+                
+                // Get only direct neighbors where edges exist
                 for(size_t i = 0; i < DNodes.size(); i++) {
                     if(i == CurrentIndex) continue;
                     
-                    std::vector<CTransportationPlanner::TNodeID> edgePath;
-                    double EdgeTime = DWalkingRouter.FindShortestPath(CurrentIndex, i, edgePath);
-                    
-                    if(EdgeTime != std::numeric_limits<double>::max()) {
-                        double NewTime = CurrentTime + EdgeTime;
-                        std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Walking);
+                    // Check if there's a direct edge - use edge weight as a test
+                    if(DWalkingRouter.HasEdge(CurrentIndex, i)) {
+                        double EdgeTime = DWalkingRouter.GetEdgeWeight(CurrentIndex, i);
                         
-                        if(NewTime < ShortestTime[DestStateKey]){
-                            ShortestTime[DestStateKey] = NewTime;
-                            Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex};
-                            PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                        if(EdgeTime != std::numeric_limits<double>::max()) {
+                            double NewTime = CurrentTime + EdgeTime;
+                            std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Walking);
+                            
+                            if(NewTime < ShortestTime[DestStateKey]){
+                                ShortestTime[DestStateKey] = NewTime;
+                                Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex};
+                                PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Walking, CurrentIndex}});
+                            }
                         }
                     }
                 }
@@ -318,21 +334,23 @@ struct CDijkstraTransportationPlanner::SImplementation{
                 }
             }
             else if(CurrentMode == CTransportationPlanner::ETransportationMode::Biking){
-                // Get direct neighbors only
+                // Only process direct neighbors from the biking router
                 for(size_t i = 0; i < DNodes.size(); i++) {
                     if(i == CurrentIndex) continue;
                     
-                    std::vector<CTransportationPlanner::TNodeID> edgePath;
-                    double EdgeTime = DBikingRouter.FindShortestPath(CurrentIndex, i, edgePath);
-                    
-                    if(EdgeTime != std::numeric_limits<double>::max()) {
-                        double NewTime = CurrentTime + EdgeTime;
-                        std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Biking);
+                    // Check if there's a direct edge
+                    if(DBikingRouter.HasEdge(CurrentIndex, i)) {
+                        double EdgeTime = DBikingRouter.GetEdgeWeight(CurrentIndex, i);
                         
-                        if(NewTime < ShortestTime[DestStateKey]){
-                            ShortestTime[DestStateKey] = NewTime;
-                            Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex};
-                            PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                        if(EdgeTime != std::numeric_limits<double>::max()) {
+                            double NewTime = CurrentTime + EdgeTime;
+                            std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Biking);
+                            
+                            if(NewTime < ShortestTime[DestStateKey]){
+                                ShortestTime[DestStateKey] = NewTime;
+                                Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex};
+                                PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Biking, CurrentIndex}});
+                            }
                         }
                     }
                 }
@@ -346,21 +364,23 @@ struct CDijkstraTransportationPlanner::SImplementation{
                 }
             }
             else if(CurrentMode == CTransportationPlanner::ETransportationMode::Bus){
-                // Get direct neighbors only
+                // Only process direct neighbors from the bus router
                 for(size_t i = 0; i < DNodes.size(); i++) {
                     if(i == CurrentIndex) continue;
                     
-                    std::vector<CTransportationPlanner::TNodeID> edgePath;
-                    double EdgeTime = DBusRouter.FindShortestPath(CurrentIndex, i, edgePath);
-                    
-                    if(EdgeTime != std::numeric_limits<double>::max()) {
-                        double NewTime = CurrentTime + EdgeTime;
-                        std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Bus);
+                    // Check if there's a direct edge
+                    if(DBusRouter.HasEdge(CurrentIndex, i)) {
+                        double EdgeTime = DBusRouter.GetEdgeWeight(CurrentIndex, i);
                         
-                        if(NewTime < ShortestTime[DestStateKey]){
-                            ShortestTime[DestStateKey] = NewTime;
-                            Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex};
-                            PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                        if(EdgeTime != std::numeric_limits<double>::max()) {
+                            double NewTime = CurrentTime + EdgeTime;
+                            std::string DestStateKey = CreateStateKey(i, CTransportationPlanner::ETransportationMode::Bus);
+                            
+                            if(NewTime < ShortestTime[DestStateKey]){
+                                ShortestTime[DestStateKey] = NewTime;
+                                Previous[DestStateKey] = {CurrentIndex, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex};
+                                PriorityQueue.push({NewTime, {i, CTransportationPlanner::ETransportationMode::Bus, CurrentIndex}});
+                            }
                         }
                     }
                 }

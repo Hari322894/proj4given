@@ -71,40 +71,96 @@ struct CTransportationPlannerCommandLine::SImplementation {
                 return true;
             }
 
+            // Get transportation planner node IDs
+            auto SrcNodeID = DPlanner->GetNodeID(StartNode);
+            auto DestNodeID = DPlanner->GetNodeID(EndNode);
+
+            if(SrcNodeID == CTransportationPlanner::InvalidNodeID || 
+               DestNodeID == CTransportationPlanner::InvalidNodeID) {
+                *DErrorSink << "Invalid node IDs provided: not found in transportation network." << std::endl;
+                return true;
+            }
+
             if(cmd == "shortest") {
-                std::vector<CStreetMap::TNodeID> Path;
-                double Distance = DPlanner->FindShortestPath(StartNode, EndNode, Path);
+                std::vector<CTransportationPlanner::TNodeID> Path;
+                double Distance = DPlanner->FindShortestPath(SrcNodeID, DestNodeID, Path);
+                
                 if(Distance == CPathRouter::NoPathExists) {
                     *DErrorSink << "No path found from " << StartNode << " to " << EndNode << "." << std::endl;
                 } else {
-                    *DOutputSink << "Shortest path from " << StartNode << " to " << EndNode << " is " << Distance << " miles." << std::endl;
-                    for(auto Node : Path) {
-                        *DOutputSink << Node << " ";
+                    *DOutputSink << "Shortest path from " << StartNode << " to " << EndNode << " is " 
+                                << std::fixed << std::setprecision(2) << Distance << " miles." << std::endl;
+                    
+                    if(!Path.empty()) {
+                        *DOutputSink << "Path: ";
+                        for(size_t i = 0; i < Path.size(); i++) {
+                            auto StreetNodeID = DPlanner->GetStreetMapNodeID(Path[i]);
+                            auto BusStopID = DPlanner->GetBusSystemStopID(Path[i]);
+                            
+                            if(StreetNodeID != CStreetMap::InvalidNodeID) {
+                                *DOutputSink << StreetNodeID;
+                            } else if(BusStopID != CBusSystem::InvalidStopID) {
+                                *DOutputSink << "B" << BusStopID;
+                            } else {
+                                *DOutputSink << Path[i];
+                            }
+                            
+                            if(i < Path.size() - 1) {
+                                *DOutputSink << " ";
+                            }
+                        }
+                        *DOutputSink << std::endl;
                     }
-                    *DOutputSink << std::endl;
                 }
             } else if(cmd == "fastest") {
                 std::vector<CTransportationPlanner::TTripStep> Path;
-                double Time = DPlanner->FindFastestPath(StartNode, EndNode, Path);
+                double Time = DPlanner->FindFastestPath(SrcNodeID, DestNodeID, Path);
+                
                 if(Time == CPathRouter::NoPathExists) {
                     *DErrorSink << "No path found from " << StartNode << " to " << EndNode << "." << std::endl;
                 } else {
-                    *DOutputSink << "Fastest path from " << StartNode << " to " << EndNode << " takes " << Time << " hours." << std::endl;
-                    for(auto Step : Path) {
-                        *DOutputSink << "(" << static_cast<int>(Step.first) << ", " << Step.second << ") ";
+                    *DOutputSink << "Fastest path from " << StartNode << " to " << EndNode 
+                                << " takes " << std::fixed << std::setprecision(2) << Time << " hours." << std::endl;
+                    
+                    if(!Path.empty()) {
+                        *DOutputSink << "Path: ";
+                        for(size_t i = 0; i < Path.size(); i++) {
+                            *DOutputSink << "(" << static_cast<int>(Path[i].first) << ", ";
+                            
+                            auto StreetNodeID = DPlanner->GetStreetMapNodeID(Path[i].second);
+                            auto BusStopID = DPlanner->GetBusSystemStopID(Path[i].second);
+                            
+                            if(StreetNodeID != CStreetMap::InvalidNodeID) {
+                                *DOutputSink << StreetNodeID;
+                            } else if(BusStopID != CBusSystem::InvalidStopID) {
+                                *DOutputSink << "B" << BusStopID;
+                            } else {
+                                *DOutputSink << Path[i].second;
+                            }
+                            
+                            *DOutputSink << ")";
+                            
+                            if(i < Path.size() - 1) {
+                                *DOutputSink << " ";
+                            }
+                        }
+                        *DOutputSink << std::endl;
                     }
-                    *DOutputSink << std::endl;
                 }
             } else if(cmd == "describe") {
                 std::vector<CTransportationPlanner::TTripStep> Path;
-                double Time = DPlanner->FindFastestPath(StartNode, EndNode, Path);
+                double Time = DPlanner->FindFastestPath(SrcNodeID, DestNodeID, Path);
+                
                 if(Time == CPathRouter::NoPathExists) {
                     *DErrorSink << "No path found from " << StartNode << " to " << EndNode << "." << std::endl;
                 } else {
                     std::vector<std::string> Description;
-                    DPlanner->GetPathDescription(Path, Description);
-                    for(const auto &Line : Description) {
-                        *DOutputSink << Line << std::endl;
+                    if(DPlanner->GetPathDescription(Path, Description)) {
+                        for(const auto &Line : Description) {
+                            *DOutputSink << Line << std::endl;
+                        }
+                    } else {
+                        *DErrorSink << "Failed to get path description." << std::endl;
                     }
                 }
             }
