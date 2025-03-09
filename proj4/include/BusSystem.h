@@ -10,6 +10,21 @@ public:
     using TRouteID = std::string; // Assuming TRouteID is a string based on typical usage
     using TStopID = int; // Assuming TStopID is an integer based on typical usage
 
+    // Define SStop and SRoute
+    struct SStop {
+        TStopID ID;
+        std::string Name;
+        TRouteID RouteID;
+        // Add more members as necessary
+    };
+
+    struct SRoute {
+        TRouteID ID;
+        std::string Name;
+        std::vector<TStopID> Stops;
+        // Add more members as necessary
+    };
+
     virtual ~CBusSystem() {}
 
     virtual std::size_t RouteCount() const noexcept = 0;
