@@ -17,8 +17,8 @@ public:
     CBusSystemIndexer(std::shared_ptr<CBusSystem> busSystem);
     ~CBusSystemIndexer();
 
-    std::size_t StopCount() const;
-    std::size_t RouteCount() const;
+    std::size_t StopCount() const noexcept;
+    std::size_t RouteCount() const noexcept;
     std::shared_ptr<SStop> SortedStopByIndex(std::size_t index) const noexcept;
     std::shared_ptr<SRoute> SortedRouteByIndex(std::size_t index) const noexcept;
     std::shared_ptr<SStop> StopByNodeID(TNodeID id) const noexcept;
