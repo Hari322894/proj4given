@@ -25,7 +25,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
         // Build sorted nodes and mapping
         auto StreetMapObj = Config->StreetMap();
         for (size_t i = 0; i < StreetMapObj->NodeCount(); ++i) {
-            auto Node = StreetMapObj->GetNodeByIndex(i);
+            auto Node = StreetMapObj->NodeByIndex(i);
             if (Node) {
                 SortedNodes.push_back(Node);
             }
@@ -48,7 +48,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
         // Process street segments for routing
         for (size_t i = 0; i < StreetMapObj->WayCount(); ++i) {
-            auto Way = StreetMapObj->GetWayByIndex(i);
+            auto Way = StreetMapObj->WayByIndex(i);
             if (!Way) continue;
 
             // Check if the way is bidirectional for bikes and pedestrians
@@ -56,12 +56,12 @@ struct CDijkstraTransportationPlanner::SImplementation {
             std::string WayName = Way->GetAttribute("name").empty() ? "unnamed street" : Way->GetAttribute("name");
 
             for (size_t j = 1; j < Way->NodeCount(); ++j) {
-                TNodeID src = Way->GetNodeID(j-1);
-                TNodeID dest = Way->GetNodeID(j);
+                TNodeID src = Way->NodeID(j-1);
+                TNodeID dest = Way->NodeID(j);
                 
                 // Get source and destination nodes
-                auto SrcNode = StreetMapObj->GetNodeByID(src);
-                auto DestNode = StreetMapObj->GetNodeByID(dest);
+                auto SrcNode = StreetMapObj->NodeByID(src);
+                auto DestNode = StreetMapObj->NodeByID(dest);
                 if (!SrcNode || !DestNode) continue;
 
                 // Calculate distance
@@ -135,8 +135,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
         // Precompute paths if specified
         if (Config->PrecomputeTime() > 0) {
-            ShortestPathRouter->Precompute(Config->PrecomputeTime());
-            FastestPathRouter->Precompute(Config->PrecomputeTime());
+            ShortestPathRouter->Precompute(std::chrono::steady_clock::now() + std::chrono::seconds(Config->PrecomputeTime()));
+            FastestPathRouter->Precompute(std::chrono::steady_clock::now() + std::chrono::seconds(Config->PrecomputeTime()));
         }
     }
 };
@@ -215,7 +215,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     ETransportationMode currentMode = path[0].first;
     TNodeID currentNodeID = path[0].second;
     std::string currentStreet;
-    CBusSystem::TRouteID currentBusRoute;
+    CBusSystem::TRouteID currentBusRoute = CBusSystem::InvalidRouteID;
     double currentDistance = 0.0;
     
     auto StreetMapObj = DImplementation->Config->StreetMap();
@@ -264,8 +264,8 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
                         currentStreet = nextStreet;
                         
                         // Calculate distance for last segment
-                        auto currNode = StreetMapObj->GetNodeByID(currentNodeID);
-                        auto nextNode = StreetMapObj->GetNodeByID(nextNodeID);
+                        auto currNode = StreetMapObj->NodeByID(currentNodeID);
+                        auto nextNode = StreetMapObj->NodeByID(nextNodeID);
                         if (currNode && nextNode) {
                             double latDiff = currNode->Latitude() - nextNode->Latitude();
                             double lonDiff = currNode->Longitude() - nextNode->Longitude();
@@ -274,8 +274,8 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
                     }
                     else {
                         // Continue on same street, accumulate distance
-                        auto currNode = StreetMapObj->GetNodeByID(currentNodeID);
-                        auto nextNode = StreetMapObj->GetNodeByID(nextNodeID);
+                        auto currNode = StreetMapObj->NodeByID(currentNodeID);
+                        auto nextNode = StreetMapObj->NodeByID(nextNodeID);
                         if (currNode && nextNode) {
                             double latDiff = currNode->Latitude() - nextNode->Latitude();
                             double lonDiff = currNode->Longitude() - nextNode->Longitude();
@@ -372,8 +372,8 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             }
             
             // Calculate segment distance
-            auto currNode = StreetMapObj->GetNodeByID(currentNodeID);
-            auto nextNode = StreetMapObj->GetNodeByID(nextNodeID);
+            auto currNode = StreetMapObj->NodeByID(currentNodeID);
+            auto nextNode = StreetMapObj->NodeByID(nextNodeID);
             if (currNode && nextNode) {
                 double latDiff = currNode->Latitude() - nextNode->Latitude();
                 double lonDiff = currNode->Longitude() - nextNode->Longitude();

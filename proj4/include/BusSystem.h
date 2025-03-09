@@ -1,35 +1,24 @@
 #ifndef BUSSYSTEM_H
 #define BUSSYSTEM_H
 
-#include "StreetMap.h"
+#include <string>
+#include <vector>
+#include <memory>
 
-class CBusSystem{
-    public:
-        using TStopID = uint64_t;
+class CBusSystem {
+public:
+    using TRouteID = std::string; // Assuming TRouteID is a string based on typical usage
+    using TStopID = int; // Assuming TStopID is an integer based on typical usage
 
-        static const TStopID InvalidStopID = std::numeric_limits<TStopID>::max();
+    virtual ~CBusSystem() {}
 
-        struct SStop{
-            virtual ~SStop(){};
-            virtual TStopID ID() const noexcept = 0;
-            virtual CStreetMap::TNodeID NodeID() const noexcept= 0;
-        };
-
-        struct SRoute{
-            virtual ~SRoute(){};
-            virtual std::string Name() const noexcept = 0;
-            virtual std::size_t StopCount() const noexcept = 0;
-            virtual TStopID GetStopID(std::size_t index) const noexcept = 0;
-        };
-
-        virtual ~CBusSystem(){};
-
-        virtual std::size_t StopCount() const noexcept = 0;
-        virtual std::size_t RouteCount() const noexcept = 0;
-        virtual std::shared_ptr<SStop> StopByIndex(std::size_t index) const noexcept = 0;
-        virtual std::shared_ptr<SStop> StopByID(TStopID id) const noexcept = 0;
-        virtual std::shared_ptr<SRoute> RouteByIndex(std::size_t index) const noexcept = 0;
-        virtual std::shared_ptr<SRoute> RouteByName(const std::string &name) const noexcept = 0;
+    virtual std::size_t RouteCount() const noexcept = 0;
+    virtual TRouteID GetRouteID(std::size_t index) const noexcept = 0;
+    virtual std::size_t StopCount(TRouteID route) const noexcept = 0;
+    virtual TStopID GetStopID(TRouteID route, std::size_t stopIndex) const noexcept = 0;
+    virtual double StopTime(TRouteID route, std::size_t stopIndex) const noexcept = 0;
+    virtual std::string GetRouteName(TRouteID route) const noexcept = 0;
+    static const TRouteID InvalidRouteID; // Assuming InvalidRouteID is a static member
 };
 
 #endif
