@@ -30,14 +30,14 @@ struct CBusSystemIndexer::SImplementation {
         for (size_t i = 0; i < DBusSystem->StopCount(); ++i) {
             auto stop = DBusSystem->StopByIndex(i);
             DSortedStops.push_back(stop);
-            DNodeToStop[stop->ID] = stop;
+            DNodeToStop[stop->ID()] = stop;
         }
         
         // Sort stops by ID
         std::sort(DSortedStops.begin(), DSortedStops.end(), 
                  [](const std::shared_ptr<CBusSystem::SStop> &lhs, 
                     const std::shared_ptr<CBusSystem::SStop> &rhs) {
-                     return lhs->ID < rhs->ID;
+                     return lhs->ID() < rhs->ID();
                  });
         
         // Index all routes
@@ -46,15 +46,15 @@ struct CBusSystemIndexer::SImplementation {
             DSortedRoutes.push_back(route);
             
             // Build connection maps between stops
-            for (size_t j = 0; j < route->Stops.size() - 1; ++j) {
-                auto srcStopID = route->Stops[j];
+            for (size_t j = 0; j < route->StopCount() - 1; ++j) {
+                auto srcStopID = route->GetStopID(j);
                 auto srcStop = DBusSystem->StopByID(srcStopID);
-                auto srcNodeID = srcStop->ID;
+                auto srcNodeID = srcStop->ID();
                 
-                for (size_t k = j + 1; k < route->Stops.size(); ++k) {
-                    auto destStopID = route->Stops[k];
+                for (size_t k = j + 1; k < route->StopCount(); ++k) {
+                    auto destStopID = route->GetStopID(k);
                     auto destStop = DBusSystem->StopByID(destStopID);
-                    auto destNodeID = destStop->ID;
+                    auto destNodeID = destStop->ID();
                     
                     // Add connected stops
                     DConnectedStops[srcNodeID].insert(destNodeID);
@@ -71,7 +71,7 @@ struct CBusSystemIndexer::SImplementation {
         std::sort(DSortedRoutes.begin(), DSortedRoutes.end(), 
                  [](const std::shared_ptr<CBusSystem::SRoute> &lhs, 
                     const std::shared_ptr<CBusSystem::SRoute> &rhs) {
-                     return lhs->Name < rhs->Name;
+                     return lhs->Name() < rhs->Name();
                  });
     }
 };
