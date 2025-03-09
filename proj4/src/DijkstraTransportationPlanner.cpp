@@ -24,8 +24,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
     
     std::shared_ptr<CStreetMap> StreetMap;
     std::shared_ptr<CBusSystem> BusSystem;
-    std::unique_ptr<CPathRouter> ShortestPathRouter;
-    std::unique_ptr<CPathRouter> FastestPathRouter;
+    // Changed from unique_ptr to shared_ptr to match what CreatePathRouter() returns
+    std::shared_ptr<CPathRouter> ShortestPathRouter;
+    std::shared_ptr<CPathRouter> FastestPathRouter;
     double WalkSpeed;
     double BikeSpeed;
     double BusSpeed;
@@ -42,10 +43,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
         BusSpeed = config->DefaultSpeedLimit();
         BusStopTime = config->BusStopTime();
         
-        // Use the CreatePathRouter static method from CPathRouter
-        // Fixed: Use .release() to convert shared_ptr to unique_ptr
-        ShortestPathRouter.reset(CPathRouter::CreatePathRouter().release());
-        FastestPathRouter.reset(CPathRouter::CreatePathRouter().release());
+        // Fixed: Simply assign the shared_ptr returned by CreatePathRouter()
+        ShortestPathRouter = CPathRouter::CreatePathRouter();
+        FastestPathRouter = CPathRouter::CreatePathRouter();
         
         // Prepare sorted nodes for SortedNodeByIndex
         for(std::size_t i = 0; i < StreetMap->NodeCount(); i++){
@@ -80,7 +80,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 }
                 
                 // Calculate distance using Haversine formula or Euclidean
-                // Fixed: Use Location() instead of GetLatitude()/GetLongitude()
                 double LatDiff = SrcNode->Location().first - DestNode->Location().first;
                 double LonDiff = SrcNode->Location().second - DestNode->Location().second;
                 double Distance = std::sqrt(LatDiff * LatDiff + LonDiff * LonDiff);
@@ -150,7 +149,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
                     auto DestNode = StreetMap->NodeByID(currNodeID);
                     
                     if(SrcNode && DestNode){
-                        // Fixed: Use Location() instead of GetLatitude()/GetLongitude()
                         double LatDiff = SrcNode->Location().first - DestNode->Location().first;
                         double LonDiff = SrcNode->Location().second - DestNode->Location().second;
                         double Distance = std::sqrt(LatDiff * LatDiff + LonDiff * LonDiff);
@@ -258,7 +256,6 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             auto startNode = StreetMapObj->NodeByID(currentNodeID);
             if(startNode){
                 ss << "Start at (" << std::fixed << std::setprecision(6) 
-                   // Fixed: Use Location() instead of GetLatitude()/GetLongitude()
                    << startNode->Location().first << ", " << startNode->Location().second << ")";
                 description.push_back(ss.str());
                 ss.str("");
@@ -311,7 +308,6 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             auto prevNode = StreetMapObj->NodeByID(prevNodeID);
             
             if(currNode && prevNode){
-                // Fixed: Use Location() instead of GetLatitude()/GetLongitude()
                 double latDiff = prevNode->Location().first - currNode->Location().first;
                 double lonDiff = prevNode->Location().second - currNode->Location().second;
                 double segmentDistance = std::sqrt(latDiff * latDiff + lonDiff * lonDiff);
@@ -377,7 +373,6 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             if(endNode){
                 ss.str("");
                 ss << "End at (" << std::fixed << std::setprecision(6) 
-                   // Fixed: Use Location() instead of GetLatitude()/GetLongitude()
                    << endNode->Location().first << ", " << endNode->Location().second << ")";
                 description.push_back(ss.str());
             }
