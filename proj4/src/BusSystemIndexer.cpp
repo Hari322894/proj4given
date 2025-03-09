@@ -95,7 +95,7 @@ std::size_t CBusSystemIndexer::RouteCount() const noexcept {
     return DImplementation->DSortedRoutes.size();
 }
 
-// Returns the stop by index from the sorted stops
+// Returns the stop by index from the sorted stop
 std::shared_ptr<CBusSystem::SStop> CBusSystemIndexer::SortedStopByIndex(std::size_t index) const noexcept {
     if (index >= DImplementation->DSortedStops.size()) {
         return nullptr;
