@@ -4,11 +4,16 @@
 #include <vector>
 #include <unordered_map>
 #include <chrono>
+#include <memory>
+#include <any>
+#include <limits>
 
 class CPathRouter {
 public:
     using TVertexID = int; // Assuming TVertexID is an integer based on typical usage
     using TEdgeLabel = int; // Assuming TEdgeLabel is an integer based on typical usage
+    static constexpr double NoPathExists = std::numeric_limits<double>::infinity();
+    static constexpr TVertexID InvalidVertexID = -1;
 
     virtual ~CPathRouter() {}
 

@@ -1,10 +1,9 @@
 #include "DijkstraPathRouter.h"
 #include <algorithm>
 #include <queue>
+#include <unordered_set>
 #include <any>
 #include <memory>
-#include <limits>
-#include <unordered_set>
 
 struct CDijkstraPathRouter::SImplementation {
     struct SVertex {
