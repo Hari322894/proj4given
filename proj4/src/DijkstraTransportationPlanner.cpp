@@ -559,8 +559,25 @@ std::pair<double, double> CDijkstraTransportationPlanner::GetNodeLocation(TNodeI
     return std::make_pair(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
 }
 
+// Fix to the FindShortestPath method in CDijkstraTransportationPlanner class
+
 double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) noexcept{
-    return DImplementation->FindFastestPath(src, dest, path);
+    // Create a temporary path with transportation modes
+    std::vector<std::pair<ETransportationMode, TNodeID>> modePath;
+    
+    // Call the implementation's FindFastestPath method
+    double result = DImplementation->FindFastestPath(src, dest, modePath);
+    
+    // Convert the path with modes to just nodes
+    path.clear();
+    if (!modePath.empty()) {
+        // Add all nodes from the mode path to the output path
+        for (const auto& pair : modePath) {
+            path.push_back(pair.second);
+        }
+    }
+    
+    return result;
 }
 
 double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<std::pair<ETransportationMode, TNodeID>> &path) noexcept{
