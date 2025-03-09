@@ -1,46 +1,44 @@
-#ifndef BUSSYSTEM_H
-#define BUSSYSTEM_H
+#ifndef CSV_BUS_SYSTEM_H
+#define CSV_BUS_SYSTEM_H
 
-#include <string>
-#include <vector>
+#include "BusSystem.h"
+#include "DSVReader.h"
 #include <memory>
+#include <vector>
+#include <string>
 
-class CBusSystem {
+class CCSVBusSystem : public CBusSystem {
 public:
-    using TRouteID = std::string; // Assuming TRouteID is a string based on typical usage
-    using TStopID = int; // Assuming TStopID is an integer based on typical usage
+    CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_ptr<CDSVReader> routesrc);
+    ~CCSVBusSystem();
 
-    // Define SStop and SRoute
-    struct SStop {
-        TStopID ID;
-        std::string Name;
-        TRouteID RouteID;
-        // Add more members as necessary
+    std::size_t StopCount() const noexcept override;
+    std::size_t RouteCount() const noexcept override;
+    std::shared_ptr<CBusSystem::SStop> StopByIndex(std::size_t index) const noexcept override;
+    std::shared_ptr<CBusSystem::SStop> StopByID(TStopID id) const noexcept override;
+    std::shared_ptr<CBusSystem::SRoute> RouteByIndex(std::size_t index) const noexcept override;
+    std::shared_ptr<CBusSystem::SRoute> RouteByName(const std::string &name) const noexcept override;
+
+private:
+    struct SStop : public CBusSystem::SStop {
+        TStopID StopID; 
+        CStreetMap::TNodeID NodeIDValue;
+
+        TStopID ID() const noexcept override;
+        CStreetMap::TNodeID NodeID() const noexcept override;
     };
 
-    struct SRoute {
-        TRouteID ID;
-        std::string Name;
-        std::vector<TStopID> Stops;
-        // Add more members as necessary
+    struct SRoute : public CBusSystem::SRoute {
+        std::string RouteName;
+        std::vector<TStopID> RouteStops;
+
+        std::string Name() const noexcept override;
+        std::size_t StopCount() const noexcept override;
+        TStopID GetStopID(std::size_t index) const noexcept override;
     };
 
-    virtual ~CBusSystem() {}
-
-    virtual std::size_t RouteCount() const noexcept = 0;
-    virtual TRouteID GetRouteID(std::size_t index) const noexcept = 0;
-    virtual std::size_t StopCount(TRouteID route) const noexcept = 0;
-    virtual TStopID GetStopID(TRouteID route, std::size_t stopIndex) const noexcept = 0;
-    virtual double StopTime(TRouteID route, std::size_t stopIndex) const noexcept = 0;
-    virtual std::string GetRouteName(TRouteID route) const noexcept = 0;
-
-    // Add the missing method declarations
-    virtual std::size_t StopCount() const noexcept = 0;
-    virtual std::shared_ptr<SStop> StopByIndex(std::size_t index) const noexcept = 0;
-    virtual std::shared_ptr<SRoute> RouteByIndex(std::size_t index) const noexcept = 0;
-    virtual std::shared_ptr<SStop> StopByID(TStopID stopID) const noexcept = 0;
-
-    static const TRouteID InvalidRouteID; // Assuming InvalidRouteID is a static member
+    struct SImplementation;
+    std::unique_ptr<SImplementation> DImplementation;
 };
 
-#endif
+#endif // CSV_BUS_SYSTEM_H
