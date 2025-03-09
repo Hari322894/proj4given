@@ -10,19 +10,6 @@ public:
     using TRouteID = std::string; // Assuming TRouteID is a string based on typical usage
     using TStopID = int; // Assuming TStopID is an integer based on typical usage
 
-    struct SStop {
-        TStopID ID;
-        std::string Name;
-        double Latitude;
-        double Longitude;
-    };
-
-    struct SRoute {
-        TRouteID ID;
-        std::string Name;
-        std::vector<TStopID> Stops;
-    };
-
     virtual ~CBusSystem() {}
 
     virtual std::size_t RouteCount() const noexcept = 0;
@@ -31,9 +18,6 @@ public:
     virtual TStopID GetStopID(TRouteID route, std::size_t stopIndex) const noexcept = 0;
     virtual double StopTime(TRouteID route, std::size_t stopIndex) const noexcept = 0;
     virtual std::string GetRouteName(TRouteID route) const noexcept = 0;
-    virtual std::shared_ptr<SStop> StopByIndex(std::size_t index) const noexcept = 0;
-    virtual std::shared_ptr<SRoute> RouteByIndex(std::size_t index) const noexcept = 0;
-    virtual std::shared_ptr<SStop> StopByID(TStopID id) const noexcept = 0;
     static const TRouteID InvalidRouteID; // Assuming InvalidRouteID is a static member
 };
 
