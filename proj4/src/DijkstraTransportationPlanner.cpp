@@ -13,11 +13,11 @@
 
 struct CDijkstraTransportationPlanner::SImplementation {
     using TNodeID = CTransportationPlanner::TNodeID;
-    using TLocation = std::pair<double, double>;
     using TTransportationMode = CTransportationPlanner::ETransportationMode;
+    using TTripStep = CTransportationPlanner::TTripStep;
     
     // Define TRouteID if it's not defined in CBusSystem
-    using TRouteID = std::size_t; // Adjust this type as needed
+    using TRouteID = std::size_t;
     static const TRouteID InvalidRouteID = std::numeric_limits<TRouteID>::max();
     
     // Use unordered_map for BusRoutes
@@ -30,20 +30,35 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double WalkSpeed;
     double BikeSpeed;
     double BusSpeed;
+    double BusStopTime;
+    
+    // Store sorted nodes for NodeCount() and SortedNodeByIndex()
+    std::vector<std::shared_ptr<CStreetMap::SNode>> SortedNodes;
     
     SImplementation(std::shared_ptr<CTransportationPlanner::SConfiguration> config) {
-        StreetMap = config->StreetMap;
-        BusSystem = config->BusSystem;
-        WalkSpeed = config->WalkSpeed;
-        BikeSpeed = config->BikeSpeed;
-        BusSpeed = config->BusSpeed;
+        StreetMap = config->StreetMap();
+        BusSystem = config->BusSystem();
+        WalkSpeed = config->WalkSpeed();
+        BikeSpeed = config->BikeSpeed();
+        BusSpeed = config->DefaultSpeedLimit();
+        BusStopTime = config->BusStopTime();
         
         ShortestPathRouter = std::make_unique<CDijkstraPathRouter>();
         FastestPathRouter = std::make_unique<CDijkstraPathRouter>();
         
-        // Add nodes/vertices to path routers
+        // Prepare sorted nodes for SortedNodeByIndex
         for(std::size_t i = 0; i < StreetMap->NodeCount(); i++){
-            auto Node = StreetMap->NodeByIndex(i);
+            SortedNodes.push_back(StreetMap->NodeByIndex(i));
+        }
+        
+        // Sort nodes by ID
+        std::sort(SortedNodes.begin(), SortedNodes.end(), 
+                  [](const std::shared_ptr<CStreetMap::SNode>& a, const std::shared_ptr<CStreetMap::SNode>& b) {
+                      return a->ID() < b->ID();
+                  });
+        
+        // Add nodes/vertices to path routers
+        for(auto& Node : SortedNodes){
             auto NodeID = Node->ID();
             ShortestPathRouter->AddVertex(NodeID);
             FastestPathRouter->AddVertex(NodeID);
@@ -69,22 +84,22 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 double Distance = std::sqrt(LatDiff * LatDiff + LonDiff * LonDiff);
                 
                 // Add to shortest path router with distance as weight
-                ShortestPathRouter->AddEdge(src, dest, Distance, CTransportationPlanner::ETransportationMode::Walking);
-                ShortestPathRouter->AddEdge(dest, src, Distance, CTransportationPlanner::ETransportationMode::Walking);
+                ShortestPathRouter->AddEdge(src, dest, Distance, static_cast<int>(CTransportationPlanner::ETransportationMode::Walk));
+                ShortestPathRouter->AddEdge(dest, src, Distance, static_cast<int>(CTransportationPlanner::ETransportationMode::Walk));
                 
                 // Add to fastest path router with time as weight
                 double WalkTime = Distance / WalkSpeed;
                 double BikeTime = Distance / BikeSpeed;
                 
-                FastestPathRouter->AddEdge(src, dest, WalkTime, CTransportationPlanner::ETransportationMode::Walking);
-                FastestPathRouter->AddEdge(dest, src, WalkTime, CTransportationPlanner::ETransportationMode::Walking);
+                FastestPathRouter->AddEdge(src, dest, WalkTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Walk));
+                FastestPathRouter->AddEdge(dest, src, WalkTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Walk));
                 
                 if(Way->GetAttribute("bicycle") != "no" && Way->GetAttribute("highway") != "motorway"){
-                    FastestPathRouter->AddEdge(src, dest, BikeTime, CTransportationPlanner::ETransportationMode::Biking);
-                    FastestPathRouter->AddEdge(dest, src, BikeTime, CTransportationPlanner::ETransportationMode::Biking);
+                    FastestPathRouter->AddEdge(src, dest, BikeTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Bike));
+                    FastestPathRouter->AddEdge(dest, src, BikeTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Bike));
                     
-                    ShortestPathRouter->AddEdge(src, dest, Distance, CTransportationPlanner::ETransportationMode::Biking);
-                    ShortestPathRouter->AddEdge(dest, src, Distance, CTransportationPlanner::ETransportationMode::Biking);
+                    ShortestPathRouter->AddEdge(src, dest, Distance, static_cast<int>(CTransportationPlanner::ETransportationMode::Bike));
+                    ShortestPathRouter->AddEdge(dest, src, Distance, static_cast<int>(CTransportationPlanner::ETransportationMode::Bike));
                 }
             }
         }
@@ -121,8 +136,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
                         }
                     }
                     
+                    // Add bus stop time
+                    BusTime += BusStopTime;
+                    
                     if(BusTime > 0){
-                        FastestPathRouter->AddEdge(prevStop, currStop, BusTime, CTransportationPlanner::ETransportationMode::Bus);
+                        FastestPathRouter->AddEdge(prevStop, currStop, BusTime, static_cast<int>(CTransportationPlanner::ETransportationMode::Bus));
                     }
                 }
             }
@@ -137,64 +155,66 @@ CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<S
 CDijkstraTransportationPlanner::~CDijkstraTransportationPlanner() {
 }
 
+std::size_t CDijkstraTransportationPlanner::NodeCount() const noexcept {
+    return DImplementation->SortedNodes.size();
+}
+
+std::shared_ptr<CStreetMap::SNode> CDijkstraTransportationPlanner::SortedNodeByIndex(std::size_t index) const noexcept {
+    if(index < DImplementation->SortedNodes.size()) {
+        return DImplementation->SortedNodes[index];
+    }
+    return nullptr;
+}
+
 double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
-    // Convert vector<TNodeID> to vector<int> for PathRouter if needed
-    std::vector<int> pathAsInt;
-    
-    double distance = DImplementation->ShortestPathRouter->FindShortestPath(src, dest, pathAsInt);
-    
-    // Convert back if needed
     path.clear();
-    for(auto node : pathAsInt) {
-        path.push_back(static_cast<TNodeID>(node));
+    
+    std::vector<CPathRouter::TVertexID> pathVertices;
+    double distance = DImplementation->ShortestPathRouter->FindShortestPath(src, dest, pathVertices);
+    
+    if(distance != std::numeric_limits<double>::max()) {
+        for(auto vertex : pathVertices) {
+            path.push_back(static_cast<TNodeID>(vertex));
+        }
     }
     
     return distance;
 }
 
-double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<std::pair<ETransportationMode, TNodeID>> &path) {
-    std::vector<TNodeID> nodePath;
+double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
+    path.clear();
+    
+    std::vector<CPathRouter::TVertexID> pathVertices;
     std::vector<int> edgeLabels;
     
-    // Convert vectors if needed
-    std::vector<int> nodePathInt;
-    std::vector<int> edgeLabelsInt;
+    double time = DImplementation->FastestPathRouter->FindShortestPath(src, dest, pathVertices, edgeLabels);
     
-    double time = DImplementation->FastestPathRouter->FindShortestPath(src, dest, nodePathInt, edgeLabelsInt);
-    
-    // Convert back to TNodeID
-    nodePath.clear();
-    for(auto node : nodePathInt) {
-        nodePath.push_back(static_cast<TNodeID>(node));
-    }
-    
-    // Convert to path with transportation modes
-    path.clear();
-    for(size_t i = 0; i < nodePath.size(); i++){
-        if(i < edgeLabelsInt.size()){ // For all except the last node
-            path.push_back({static_cast<ETransportationMode>(edgeLabelsInt[i]), nodePath[i]});
+    if(time != std::numeric_limits<double>::max() && !pathVertices.empty()) {
+        // Add the first node with default mode (or could be determined by first edge)
+        ETransportationMode firstMode = ETransportationMode::Walk;
+        if(!edgeLabels.empty()) {
+            firstMode = static_cast<ETransportationMode>(edgeLabels[0]);
         }
-        else {
-            // For the last node, use the last mode or Walking as default
-            ETransportationMode lastMode = ETransportationMode::Walking;
-            if(!edgeLabelsInt.empty()){
-                lastMode = static_cast<ETransportationMode>(edgeLabelsInt.back());
-            }
-            path.push_back({lastMode, nodePath[i]});
+        path.push_back({firstMode, pathVertices[0]});
+        
+        // Add remaining nodes with their transportation modes
+        for(size_t i = 1; i < pathVertices.size(); i++) {
+            ETransportationMode mode = static_cast<ETransportationMode>(edgeLabels[i-1]);
+            path.push_back({mode, pathVertices[i]});
         }
     }
     
     return time;
 }
 
-bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<std::pair<ETransportationMode, TNodeID>> &path, std::vector<std::string> &description) const {
+bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripStep> &path, std::vector<std::string> &description) const {
     if(path.empty()){
         return false;
     }
     
     description.clear();
     SImplementation::TRouteID currentBusRoute = SImplementation::InvalidRouteID;
-    ETransportationMode currentMode = ETransportationMode::Walking;
+    ETransportationMode currentMode = ETransportationMode::Walk;
     std::ostringstream ss;
     double totalDistance = 0.0;
     
@@ -223,14 +243,14 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<std::p
         // Mode change or segment description
         if(currentTransportMode != currentMode){
             // Close out previous segment
-            if(currentMode == ETransportationMode::Walking){
+            if(currentMode == ETransportationMode::Walk){
                 if(totalDistance > 0.0){
                     ss << "Walk " << std::fixed << std::setprecision(1) << totalDistance << " miles";
                     description.push_back(ss.str());
                     ss.str("");
                 }
             }
-            else if(currentMode == ETransportationMode::Biking){
+            else if(currentMode == ETransportationMode::Bike){
                 if(totalDistance > 0.0){
                     ss << "Bike " << std::fixed << std::setprecision(1) << totalDistance << " miles";
                     description.push_back(ss.str());
@@ -256,7 +276,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<std::p
         }
         
         // Calculate segment distance
-        if(currentMode == ETransportationMode::Walking || currentMode == ETransportationMode::Biking){
+        if(currentMode == ETransportationMode::Walk || currentMode == ETransportationMode::Bike){
             auto currNode = StreetMapObj->NodeByID(currentNodeID);
             auto prevNode = StreetMapObj->NodeByID(prevNodeID);
             
@@ -300,11 +320,11 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<std::p
         // Last node in path
         if(i == path.size() - 1){
             // Close out the last segment
-            if(currentMode == ETransportationMode::Walking){
+            if(currentMode == ETransportationMode::Walk){
                 ss << "Walk " << std::fixed << std::setprecision(1) << totalDistance << " miles";
                 description.push_back(ss.str());
             }
-            else if(currentMode == ETransportationMode::Biking){
+            else if(currentMode == ETransportationMode::Bike){
                 ss << "Bike " << std::fixed << std::setprecision(1) << totalDistance << " miles";
                 description.push_back(ss.str());
             }
