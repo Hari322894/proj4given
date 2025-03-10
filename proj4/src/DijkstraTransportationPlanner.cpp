@@ -1,5 +1,6 @@
 #include "DijkstraTransportationPlanner.h"
 #include "DijkstraPathRouter.h"
+#include "BusSystem.h"
 #include <limits>
 #include <algorithm>
 #include <unordered_map>
