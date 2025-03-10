@@ -3,7 +3,7 @@
 #include "FileDataSink.h"
 #include "FileDataFactory.h"
 #include "DijkstraTransportationPlanner.h"
-#include "TransportationPlannerConfig.h"
+#include "STransportationPlannerConfig.h"
 #include <memory>
 
 class MockStreetMap : public CStreetMap {
