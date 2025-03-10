@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <iostream>
 
 struct CTransportationPlannerCommandLine::SImplementation {
     std::shared_ptr<CDataSource> DCommandSource;
@@ -27,60 +28,68 @@ struct CTransportationPlannerCommandLine::SImplementation {
     }
 
     bool ProcessCommands() {
-        std::vector<char> buffer(1024); // Buffer for reading commands
-        std::string command;
+        std::vector<char> buffer(1024, 0); // Initialize buffer with zeros
+        std::string commandBuffer;
         
         // Keep reading commands until end of input
         size_t bytesRead;
-        while((bytesRead = DCommandSource->Read(buffer, buffer.size())) > 0) {
+        while((bytesRead = DCommandSource->Read(buffer, buffer.size()))) {
             // Convert buffer to string with proper length
-            command = std::string(buffer.data(), bytesRead);
+            std::string chunk(buffer.begin(), buffer.begin() + bytesRead);
+            commandBuffer += chunk;
             
-            // Check for newline character and process complete commands
-            if(command.find('\n') != std::string::npos) {
-                std::stringstream CommandStream(command);
-                std::string CommandType;
-                CommandStream >> CommandType;
-    
-                // Handle different command types
-                if(CommandType == "help") {
-                    ProcessHelpCommand();
-                }
-                else if(CommandType == "count") {
-                    ProcessCountCommand();
-                }
-                else if(CommandType == "node") {
-                    ProcessNodeCommand(CommandStream);
-                }
-                else if(CommandType == "shortest") {
-                    ProcessShortestPathCommand(CommandStream);
-                }
-                else if(CommandType == "fastest") {
-                    ProcessFastestPathCommand(CommandStream);
-                }
-                else if(CommandType.empty() || CommandType[0] == '\n' || CommandType[0] == '\r') {
-                    // Empty line, just ignore
-                    continue;
-                }
-                else {
-                    // Unknown command
-                    std::string ErrorMessage = "Unknown command: " + CommandType + "\n";
-                    DErrorSink->Write(StringToVector(ErrorMessage));
+            // Process complete commands (ending with newline)
+            size_t pos;
+            while((pos = commandBuffer.find('\n')) != std::string::npos) {
+                // Extract the complete command
+                std::string command = commandBuffer.substr(0, pos);
+                // Remove the processed command from the buffer
+                commandBuffer.erase(0, pos + 1);
+                
+                // Process the command if it's not empty
+                if(!command.empty()) {
+                    // Remove carriage return if present
+                    if(command.back() == '\r') {
+                        command.pop_back();
+                    }
+                    
+                    std::stringstream commandStream(command);
+                    std::string commandType;
+                    commandStream >> commandType;
+                    
+                    if(commandType.empty()) {
+                        continue; // Skip empty lines
+                    }
+                    else if(commandType == "help") {
+                        ProcessHelpCommand();
+                    }
+                    else if(commandType == "count") {
+                        ProcessCountCommand();
+                    }
+                    else if(commandType == "node") {
+                        ProcessNodeCommand(commandStream);
+                    }
+                    else if(commandType == "shortest") {
+                        ProcessShortestPathCommand(commandStream);
+                    }
+                    else if(commandType == "fastest") {
+                        ProcessFastestPathCommand(commandStream);
+                    }
+                    else {
+                        // Unknown command
+                        std::string errorMessage = "Unknown command: " + commandType + "\n";
+                        DErrorSink->Write(StringToVector(errorMessage));
+                    }
                 }
             }
-            else {
-                // Incomplete command, write error
-                std::string ErrorMessage = "Incomplete command (missing newline)\n";
-                DErrorSink->Write(StringToVector(ErrorMessage));
-            }
             
-            // Clear buffer for next read
+            // Clear the buffer for the next read
             std::fill(buffer.begin(), buffer.end(), 0);
         }
         
         return true;
     }
-    
+
     void ProcessHelpCommand() {
         std::string HelpMessage = 
             "help - Display this help message\n"
