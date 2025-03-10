@@ -6,6 +6,7 @@
 #include <iostream>
 #include <queue>
 #include <algorithm>
+#include <limits>
 
 struct CDijkstraPathRouter::SImplementation{
     struct IndVertex{
@@ -36,25 +37,15 @@ struct CDijkstraPathRouter::SImplementation{
 
             if(Search == MapOfWeights.end()){
                 return false;
-
             }
             return Search->second;
         }
-
     };
 
-   // std::vector<size_t> ListOfVertices;//A vector of index or IDs
     std::vector< std::shared_ptr< IndVertex > > AllVertices;
-   // std::unordered_map<TVertexID, std::shared_ptr< IndVertex > > MapOfVertices;//a map of the index(orID) to the IndVertex
     size_t IndexKeeper = -1;
     
-
-
-
-    
-    SImplementation(){
-
-    };
+    SImplementation(){};
 
     std::size_t VertexCount() const{
         return AllVertices.size();
@@ -73,16 +64,16 @@ struct CDijkstraPathRouter::SImplementation{
         return AllVertices[id]->GetThisVertexTag();
     };
     
-    
     bool AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir = false) {
         if (weight > 0)
         {
-            if (bidir){
-                //std::cout<<"BIDIR IS TRUE"<<std::endl;
-                AllVertices[src]->ConnectedIDs.push_back(dest);
-            }
-            AllVertices[src]->MapOfWeights.insert({dest,weight});
+            AllVertices[src]->MapOfWeights[dest] = weight;
             AllVertices[src]->ConnectedIDs.push_back(dest);
+            
+            if (bidir){
+                AllVertices[dest]->MapOfWeights[src] = weight;
+                AllVertices[dest]->ConnectedIDs.push_back(src);
+            }
             return true;
         }
         return false;
@@ -93,67 +84,76 @@ struct CDijkstraPathRouter::SImplementation{
     };
 
     double FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) {
-        std::unordered_map <TVertexID, std::pair<double, TVertexID>> DP;
-        std::priority_queue <TVertexID> pq;
-        for (int i = 0; i < VertexCount(); i++)
-        {
-            std::pair<double, TVertexID> V;
-            V.first = std::numeric_limits<double>::infinity();
-            V.second = -1;
-            DP.insert({AllVertices[i]->GetVertexID(), V});
+        // Clear the path vector first
+        path.clear();
+        
+        // Check if src and dest are valid vertices
+        if(src >= VertexCount() || dest >= VertexCount()) {
+            return NoPathExists;
         }
-
-        DP[src].first = 0;
-        DP[src].second = src;
-
-        pq.push(src);
-        //finish initialize
-
-        while(!pq.empty())
-        {
-            TVertexID u = pq.top();
+        
+        // Create a min-heap priority queue
+        // Pair of (distance, vertex)
+        typedef std::pair<double, TVertexID> DistVertex;
+        std::priority_queue<DistVertex, std::vector<DistVertex>, std::greater<DistVertex>> pq;
+        
+        // Create distance array and predecessor array
+        std::vector<double> distance(VertexCount(), std::numeric_limits<double>::infinity());
+        std::vector<TVertexID> predecessor(VertexCount(), -1);
+        
+        // Initialize source distance and add to queue
+        distance[src] = 0;
+        pq.push({0, src});
+        
+        // Dijkstra's algorithm
+        while(!pq.empty()) {
+            double dist = pq.top().first;
+            TVertexID u = pq.top().second;
             pq.pop();
-            for(int i = 0; i < AllVertices[u]->ConnectedIDCount(); i++)
-            {
-                TVertexID v = AllVertices[u]->GetConnectedVertexIDs()[i];
-                double w = AllVertices[u]->GetWeight(AllVertices[u]->GetConnectedVertexIDs()[i]);
-
-                if(DP[v].first > DP[u].first + w)
-                {
-                    DP[v].first = DP[u].first + w;
-                    DP[v].second = u;
-                    pq.push(v);
+            
+            // Skip if we've found a better path already
+            if(dist > distance[u]) continue;
+            
+            // If we reached destination, break
+            if(u == dest) break;
+            
+            // Check all neighbors of u
+            for(TVertexID v : AllVertices[u]->GetConnectedVertexIDs()) {
+                double weight = AllVertices[u]->GetWeight(v);
+                
+                // Relaxation
+                if(distance[u] + weight < distance[v]) {
+                    distance[v] = distance[u] + weight;
+                    predecessor[v] = u;
+                    pq.push({distance[v], v});
                 }
             }
         }
         
-        //check the path
-        TVertexID current = dest;
-        while(current != src)
-        {
-            path.push_back(current);
-            current = DP[current].second;
-        }
-        path.push_back(current);
-        reverse(path.begin(),path.end());
-
-        if(DP[dest].first == std::numeric_limits<double>::infinity())
-        {
+        // Check if path exists
+        if(distance[dest] == std::numeric_limits<double>::infinity()) {
             return NoPathExists;
         }
-        return DP[dest].first;
+        
+        // Reconstruct path
+        for(TVertexID at = dest; at != -1; at = predecessor[at]) {
+            path.push_back(at);
+            if(at == src) break;
+        }
+        
+        // Reverse to get path from src to dest
+        std::reverse(path.begin(), path.end());
+        
+        return distance[dest];
     };
-
 };
+
 //---------------------------------------------
 CDijkstraPathRouter::CDijkstraPathRouter(){
     DImplementation = std::make_unique<SImplementation>();
-
 };
 
-CDijkstraPathRouter::~CDijkstraPathRouter(){
-    
-};
+CDijkstraPathRouter::~CDijkstraPathRouter(){};
 
 std::size_t CDijkstraPathRouter::VertexCount() const noexcept{
     return DImplementation->VertexCount();
