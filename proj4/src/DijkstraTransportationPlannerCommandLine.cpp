@@ -28,63 +28,102 @@ struct CTransportationPlannerCommandLine::SImplementation {
     }
 
     bool ProcessCommands() {
-        std::vector<char> buffer(1024, 0); // Initialize buffer with zeros
-        std::string commandBuffer;
+        // Check if we're using StandardDataSource (stdin)
+        bool isStdin = dynamic_cast<CStandardDataSource*>(DCommandSource.get()) != nullptr;
         
-        // Keep reading commands until end of input
-        size_t bytesRead;
-        while((bytesRead = DCommandSource->Read(buffer, buffer.size()))) {
-            // Convert buffer to string with proper length
-            std::string chunk(buffer.begin(), buffer.begin() + bytesRead);
-            commandBuffer += chunk;
-            
-            // Process complete commands (ending with newline)
-            size_t pos;
-            while((pos = commandBuffer.find('\n')) != std::string::npos) {
-                // Extract the complete command
-                std::string command = commandBuffer.substr(0, pos);
-                // Remove the processed command from the buffer
-                commandBuffer.erase(0, pos + 1);
-                
-                // Process the command if it's not empty
-                if(!command.empty()) {
-                    // Remove carriage return if present
-                    if(command.back() == '\r') {
-                        command.pop_back();
-                    }
-                    
-                    std::stringstream commandStream(command);
+        if (isStdin) {
+            // Special handling for stdin
+            std::string line;
+            while (std::getline(std::cin, line)) {
+                // Process the line
+                if (!line.empty()) {
+                    std::stringstream commandStream(line);
                     std::string commandType;
                     commandStream >> commandType;
                     
-                    if(commandType.empty()) {
-                        continue; // Skip empty lines
-                    }
-                    else if(commandType == "help") {
-                        ProcessHelpCommand();
-                    }
-                    else if(commandType == "count") {
-                        ProcessCountCommand();
-                    }
-                    else if(commandType == "node") {
-                        ProcessNodeCommand(commandStream);
-                    }
-                    else if(commandType == "shortest") {
-                        ProcessShortestPathCommand(commandStream);
-                    }
-                    else if(commandType == "fastest") {
-                        ProcessFastestPathCommand(commandStream);
-                    }
-                    else {
-                        // Unknown command
-                        std::string errorMessage = "Unknown command: " + commandType + "\n";
-                        DErrorSink->Write(StringToVector(errorMessage));
+                    if (!commandType.empty()) {
+                        if (commandType == "help") {
+                            ProcessHelpCommand();
+                        }
+                        else if (commandType == "count") {
+                            ProcessCountCommand();
+                        }
+                        else if (commandType == "node") {
+                            ProcessNodeCommand(commandStream);
+                        }
+                        else if (commandType == "shortest") {
+                            ProcessShortestPathCommand(commandStream);
+                        }
+                        else if (commandType == "fastest") {
+                            ProcessFastestPathCommand(commandStream);
+                        }
+                        else {
+                            // Unknown command
+                            std::string errorMessage = "Unknown command: " + commandType + "\n";
+                            DErrorSink->Write(StringToVector(errorMessage));
+                        }
                     }
                 }
             }
+        }
+        else {
+            // Regular file handling with improved buffer management
+            std::vector<char> buffer(1024);
+            std::string commandBuffer;
             
-            // Clear the buffer for the next read
-            std::fill(buffer.begin(), buffer.end(), 0);
+            size_t bytesRead;
+            while ((bytesRead = DCommandSource->Read(buffer, buffer.size())) > 0) {
+                // Process the bytes read
+                for (size_t i = 0; i < bytesRead; ++i) {
+                    commandBuffer.push_back(buffer[i]);
+                }
+                
+                // Process complete lines
+                size_t pos;
+                while ((pos = commandBuffer.find('\n')) != std::string::npos) {
+                    // Extract command
+                    std::string command = commandBuffer.substr(0, pos);
+                    commandBuffer.erase(0, pos + 1);
+                    
+                    // Remove carriage return if present
+                    if (!command.empty() && command.back() == '\r') {
+                        command.pop_back();
+                    }
+                    
+                    // Skip empty commands
+                    if (!command.empty()) {
+                        std::stringstream commandStream(command);
+                        std::string commandType;
+                        commandStream >> commandType;
+                        
+                        if (!commandType.empty()) {
+                            if (commandType == "help") {
+                                ProcessHelpCommand();
+                            }
+                            else if (commandType == "count") {
+                                ProcessCountCommand();
+                            }
+                            else if (commandType == "node") {
+                                ProcessNodeCommand(commandStream);
+                            }
+                            else if (commandType == "shortest") {
+                                ProcessShortestPathCommand(commandStream);
+                            }
+                            else if (commandType == "fastest") {
+                                ProcessFastestPathCommand(commandStream);
+                            }
+                            else {
+                                // Unknown command
+                                std::string errorMessage = "Unknown command: " + commandType + "\n";
+                                DErrorSink->Write(StringToVector(errorMessage));
+                            }
+                        }
+                    }
+                }
+                
+                // Clear buffer for next read
+                std::fill(buffer.begin(), buffer.end(), 0);
+            }
         }
         
         return true;
