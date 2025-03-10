@@ -1,26 +1,37 @@
+#include "TransportationPlannerCommandLine.h"
 #include "TransportationPlannerConfig.h"
+#include <memory>
 
-struct CTransportationPlannerCommandLine::SImplementation{
-
-    SImplementation(std::shared_ptr<CDataSource> cmdsrc, std::shared_ptr<CDataSink> outsink, std::shared_ptr<CDataSink> errsink, std::shared_ptr<CDataFactory> results, std::shared_ptr<CTransportationPlanner> planner){
-
-    };
+struct CTransportationPlannerCommandLine::SImplementation {
+    std::shared_ptr<CDataSource> DCommandSource;
+    std::shared_ptr<CDataSink> DOutputSink;
+    std::shared_ptr<CDataSink> DErrorSink;
+    std::shared_ptr<CDataFactory> DResultsFactory;
+    std::shared_ptr<CTransportationPlanner> DPlanner;
     
-    bool ProcessCommands(){
-
-    };
+    SImplementation(std::shared_ptr<CDataSource> cmdsrc, 
+                   std::shared_ptr<CDataSink> outsink, 
+                   std::shared_ptr<CDataSink> errsink, 
+                   std::shared_ptr<CDataFactory> results, 
+                   std::shared_ptr<CTransportationPlanner> planner)
+        : DCommandSource(cmdsrc), DOutputSink(outsink), DErrorSink(errsink),
+          DResultsFactory(results), DPlanner(planner) {
+    }
+   
+    bool ProcessCommands() {
+        // Implementation here
+        return true; // Or actual implementation return value
+    }
 };
-        
-        
-CTransportationPlannerCommandLine::CTransportationPlannerCommandLine(std::shared_ptr<CDataSource> cmdsrc, std::shared_ptr<CDataSink> outsink, std::shared_ptr<CDataSink> errsink, std::shared_ptr<CDataFactory> results, std::shared_ptr<CTransportationPlanner> planner){
+       
+CTransportationPlannerCommandLine::CTransportationPlannerCommandLine(std::shared_ptr<CDataSource> cmdsrc, std::shared_ptr<CDataSink> outsink, std::shared_ptr<CDataSink> errsink, std::shared_ptr<CDataFactory> results, std::shared_ptr<CTransportationPlanner> planner) {
     DImplementation = std::make_unique<SImplementation>(cmdsrc, outsink, errsink, results, planner);
-};
+}
 
-CTransportationPlannerCommandLine::~CTransportationPlannerCommandLine(){
+CTransportationPlannerCommandLine::~CTransportationPlannerCommandLine() {
+    // Destructor can be empty when using std::unique_ptr
+}
 
-};
-
-bool CTransportationPlannerCommandLine::ProcessCommands(){
+bool CTransportationPlannerCommandLine::ProcessCommands() {
     return DImplementation->ProcessCommands();
-};
-
+}
