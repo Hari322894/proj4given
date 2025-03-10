@@ -24,7 +24,7 @@ struct CBusSystemIndexer::SImplementation{
     std::shared_ptr<SStop> SortedStopByIndex(std::size_t index) const {
         if(index >= BusSystem->StopCount()) return nullptr;
         std::vector <int> StopID;
-        for (int i = 0; i < BusSystem->StopCount(); i++)
+        for (int i = 0; i < static_cast<int>(BusSystem->StopCount()); i++)
         {
             StopID.push_back(BusSystem->StopByIndex(i)->ID());
         }
@@ -35,7 +35,7 @@ struct CBusSystemIndexer::SImplementation{
     std::shared_ptr<SRoute> SortedRouteByIndex(std::size_t index) const {
         if(index >= BusSystem->RouteCount()) return nullptr;
         std::vector <std::string> RouteID;
-        for (int i = 0; i < BusSystem->RouteCount(); i++)
+        for (int i = 0; i < static_cast<int>(BusSystem->RouteCount()); i++)
         {
             RouteID.push_back(BusSystem->RouteByIndex(i)->Name());
         }
@@ -44,7 +44,7 @@ struct CBusSystemIndexer::SImplementation{
     };
 
     std::shared_ptr<SStop> StopByNodeID(TNodeID id) const {
-        for (int i = 0; i < BusSystem->StopCount(); i++)
+        for (int i = 0; i < static_cast<int>(BusSystem->StopCount()); i++)
         {
             if(BusSystem->StopByIndex(i)->NodeID() == id)
             {
@@ -58,13 +58,13 @@ struct CBusSystemIndexer::SImplementation{
         CBusSystem::TStopID s = StopByNodeID(src)->ID();
         CBusSystem::TStopID d = StopByNodeID(dest)->ID();
         int count = 0;
-        for (int i = 0; i < BusSystem->RouteCount(); i++)
+        for (int i = 0; i < static_cast<int>(BusSystem->RouteCount()); i++)
         {
             count = 0;
-            for(int j =  0; j<BusSystem->RouteByIndex(i)->StopCount(); j++)
+            for(int j = 0; j < static_cast<int>(BusSystem->RouteByIndex(i)->StopCount()); j++)
             {
-                if(BusSystem->RouteByIndex(i)->GetStopID(j) == s) count ++;
-                if(BusSystem->RouteByIndex(i)->GetStopID(j) == d) count ++;
+                if(BusSystem->RouteByIndex(i)->GetStopID(j) == s) count++;
+                if(BusSystem->RouteByIndex(i)->GetStopID(j) == d) count++;
             }
             if(count >= 2)
             {
@@ -77,8 +77,6 @@ struct CBusSystemIndexer::SImplementation{
             return 0;
         }
         return 1;
-        
-        
     };
 
     bool RouteBetweenNodeIDs(TNodeID src, TNodeID dest) const {

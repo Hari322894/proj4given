@@ -1,7 +1,10 @@
-#include "TransportationPlannerCommandLine.h"  // Include the correct header
-#include "TransportationPlannerConfig.h"
+#include "TransportationPlannerCommandLine.h"
+#include "TransportationPlanner.h"
+#include "DataSource.h"
+#include "DataSink.h"
+#include "DataFactory.h"
 
-struct CTransportationPlannerCommandLine::SImplementation{
+struct CTransportationPlannerCommandLine::SImplementation {
     std::shared_ptr<CDataSource> CommandSource;
     std::shared_ptr<CDataSink> OutputSink;
     std::shared_ptr<CDataSink> ErrorSink;
@@ -18,21 +21,24 @@ struct CTransportationPlannerCommandLine::SImplementation{
     }
    
     bool ProcessCommands() {
-        // Implement your command processing logic here
-        return true; // Return appropriate value based on your logic
+        // Your command processing logic here
+        // Just a placeholder for now
+        return true;
     }
 };
        
-CTransportationPlannerCommandLine::CTransportationPlannerCommandLine(std::shared_ptr<CDataSource> cmdsrc, 
-                                                                    std::shared_ptr<CDataSink> outsink, 
-                                                                    std::shared_ptr<CDataSink> errsink, 
-                                                                    std::shared_ptr<CDataFactory> results, 
-                                                                    std::shared_ptr<CTransportationPlanner> planner) {
+CTransportationPlannerCommandLine::CTransportationPlannerCommandLine(
+    std::shared_ptr<CDataSource> cmdsrc, 
+    std::shared_ptr<CDataSink> outsink, 
+    std::shared_ptr<CDataSink> errsink, 
+    std::shared_ptr<CDataFactory> results, 
+    std::shared_ptr<CTransportationPlanner> planner) {
+    
     DImplementation = std::make_unique<SImplementation>(cmdsrc, outsink, errsink, results, planner);
 }
 
 CTransportationPlannerCommandLine::~CTransportationPlannerCommandLine() {
-    // Destructor implementation (already correct in your code)
+    // Destructor is fine as is - no dynamic allocations to clean up
 }
 
 bool CTransportationPlannerCommandLine::ProcessCommands() {
