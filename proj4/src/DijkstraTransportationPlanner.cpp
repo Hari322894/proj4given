@@ -4,7 +4,8 @@
 #include <algorithm>
 #include <unordered_map>
 #include <queue>
-#include <cmath> // Added for math functions
+#include <cmath>
+#include <set>
 
 // Define M_PI if not defined
 #ifndef M_PI
@@ -18,6 +19,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
     std::shared_ptr<CDijkstraPathRouter> DPathRouter;
     std::vector<std::shared_ptr<CStreetMap::SNode>> DNodes;
     std::unordered_map<TNodeID, std::shared_ptr<CStreetMap::SNode>> DNodeMap;
+    std::unordered_map<TStopID, TNodeID> DStopToNodeMap;
+    std::unordered_map<TNodeID, std::set<TStopID>> DNodeToStopsMap;
+    std::unordered_map<TNodeID, std::unordered_map<TNodeID, bool>> DBusConnections;
 
     SImplementation(std::shared_ptr<SConfiguration> config) {
         DConfig = config;
@@ -36,9 +40,32 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
         // Sort nodes by ID for consistent indexing
         std::sort(DNodes.begin(), DNodes.end(),
-                  [](const auto &a, const auto &b) { return a->ID() < b->ID(); });
+                 [](const auto &a, const auto &b) { return a->ID() < b->ID(); });
 
-        // Add vertices and edges to the path router
+        // Create mapping between bus stops and nodes
+        if (DBusSystem) {
+            for (std::size_t i = 0; i < DBusSystem->StopCount(); ++i) {
+                auto stop = DBusSystem->StopByIndex(i);
+                DStopToNodeMap[stop->ID()] = stop->NodeID();
+                DNodeToStopsMap[stop->NodeID()].insert(stop->ID());
+            }
+
+            // Build bus connections map
+            for (std::size_t i = 0; i < DBusSystem->RouteCount(); ++i) {
+                auto route = DBusSystem->RouteByIndex(i);
+                for (std::size_t j = 1; j < route->StopCount(); ++j) {
+                    auto stop1ID = route->GetStopID(j - 1);
+                    auto stop2ID = route->GetStopID(j);
+                    
+                    auto node1ID = DStopToNodeMap[stop1ID];
+                    auto node2ID = DStopToNodeMap[stop2ID];
+                    
+                    DBusConnections[node1ID][node2ID] = true;
+                }
+            }
+        }
+
+        // Add vertices to the path router
         for (const auto &node : DNodes) {
             DPathRouter->AddVertex(node->ID());
         }
@@ -62,7 +89,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 auto node1ID = way->GetNodeID(j - 1);
                 auto node2ID = way->GetNodeID(j);
 
-                // Get the node objects from their IDs using our map
                 auto node1Iter = DNodeMap.find(node1ID);
                 auto node2Iter = DNodeMap.find(node2ID);
 
@@ -71,61 +97,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
                     auto node2 = node2Iter->second;
                     
                     double distance = CalculateDistance(node1, node2);
-                    // Removed unused timeWeight variable
                     
                     DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
 
                     // Add edge in reverse if way is bidirectional
                     if (!way->HasAttribute("oneway") || way->GetAttribute("oneway") != "yes") {
-                        DPathRouter->AddEdge(node2->ID(), node1->ID(), distance, false);
-                    }
-                }
-            }
-        }
-
-        // Add bus route edges
-        if (DBusSystem) {
-            for (std::size_t i = 0; i < DBusSystem->RouteCount(); ++i) {
-                auto route = DBusSystem->RouteByIndex(i);
-                if (route->StopCount() < 2)
-                    continue;
-
-                // Using BikeSpeed instead of BusSpeed (Configuration doesn't have BusSpeed)
-                double busSpeed = DConfig->BikeSpeed();
-                
-                for (std::size_t j = 1; j < route->StopCount(); ++j) {
-                    // Fixed: Using GetStopID instead of StopByIndex
-                    auto stop1ID = route->GetStopID(j - 1);
-                    auto stop2ID = route->GetStopID(j);
-                    
-                    // Get the nodes associated with these stops
-                    TNodeID node1ID = 0;
-                    TNodeID node2ID = 0;
-                    
-                    // Find the nodes for these stops
-                    for (std::size_t s = 0; s < DBusSystem->StopCount(); ++s) {
-                        auto stop = DBusSystem->StopByIndex(s);
-                        if (stop->ID() == stop1ID) {
-                            node1ID = stop->NodeID();
-                        }
-                        if (stop->ID() == stop2ID) {
-                            node2ID = stop->NodeID();
-                        }
-                    }
-                    
-                    auto node1Iter = DNodeMap.find(node1ID);
-                    auto node2Iter = DNodeMap.find(node2ID);
-                    
-                    if (node1Iter != DNodeMap.end() && node2Iter != DNodeMap.end()) {
-                        auto node1 = node1Iter->second;
-                        auto node2 = node2Iter->second;
-                        
-                        double distance = CalculateDistance(node1, node2);
-                        // Removed unused busTime variable
-                        
-                        // We'll use separate bus edges in the actual fastest path calculation
-                        // This is just to establish connectivity in the basic path router
-                        DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
                         DPathRouter->AddEdge(node2->ID(), node1->ID(), distance, false);
                     }
                 }
@@ -177,6 +153,12 @@ struct CDijkstraTransportationPlanner::SImplementation {
             return std::numeric_limits<double>::max(); // Indicate no path exists
         }
 
+        // Handle special case: source and destination are the same
+        if (src == dest) {
+            path.push_back(src);
+            return 0.0;
+        }
+        
         std::vector<CPathRouter::TVertexID> routerPath;
         double distance = DPathRouter->FindShortestPath(src, dest, routerPath);
 
@@ -195,6 +177,14 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
         path.clear();
 
+        // Check if nodes exist
+        auto srcIter = DNodeMap.find(src);
+        auto destIter = DNodeMap.find(dest);
+        
+        if (srcIter == DNodeMap.end() || destIter == DNodeMap.end()) {
+            return std::numeric_limits<double>::max(); // Indicate no path exists
+        }
+
         // Check if source and destination are the same
         if (src == dest) {
             TTripStep step;
@@ -202,14 +192,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
             step.second = src;
             path.push_back(step);
             return 0.0;
-        }
-
-        // Check if nodes exist
-        auto srcIter = DNodeMap.find(src);
-        auto destIter = DNodeMap.find(dest);
-        
-        if (srcIter == DNodeMap.end() || destIter == DNodeMap.end()) {
-            return std::numeric_limits<double>::max(); // Indicate no path exists
         }
 
         // Create a multi-modal graph for the fastest path calculation
@@ -257,46 +239,37 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 if (route->StopCount() < 2)
                     continue;
 
-                // Using BikeSpeed instead of BusSpeed
-                double busSpeed = DConfig->BikeSpeed();
+                double busSpeed = DConfig->BikeSpeed(); // Using bike speed for bus
                 
                 for (std::size_t j = 1; j < route->StopCount(); ++j) {
-                    // Fixed: Using GetStopID instead of StopByIndex
                     auto stop1ID = route->GetStopID(j - 1);
                     auto stop2ID = route->GetStopID(j);
                     
-                    // Get the nodes associated with these stops
-                    TNodeID node1ID = 0;
-                    TNodeID node2ID = 0;
+                    auto node1IDIter = DStopToNodeMap.find(stop1ID);
+                    auto node2IDIter = DStopToNodeMap.find(stop2ID);
                     
-                    // Find the nodes for these stops
-                    for (std::size_t s = 0; s < DBusSystem->StopCount(); ++s) {
-                        auto stop = DBusSystem->StopByIndex(s);
-                        if (stop->ID() == stop1ID) {
-                            node1ID = stop->NodeID();
-                        }
-                        if (stop->ID() == stop2ID) {
-                            node2ID = stop->NodeID();
-                        }
-                    }
-                    
-                    auto node1Iter = DNodeMap.find(node1ID);
-                    auto node2Iter = DNodeMap.find(node2ID);
-                    
-                    if (node1Iter != DNodeMap.end() && node2Iter != DNodeMap.end()) {
-                        auto node1 = node1Iter->second;
-                        auto node2 = node2Iter->second;
+                    if (node1IDIter != DStopToNodeMap.end() && node2IDIter != DStopToNodeMap.end()) {
+                        TNodeID node1ID = node1IDIter->second;
+                        TNodeID node2ID = node2IDIter->second;
                         
-                        double distance = CalculateDistance(node1, node2);
-                        double busTime = distance / busSpeed;
+                        auto node1Iter = DNodeMap.find(node1ID);
+                        auto node2Iter = DNodeMap.find(node2ID);
                         
-                        // Add wait time to the first stop - using a reasonable default since BusWaitTime isn't available
-                        if (j == 1) {
-                            busTime += 5.0; // 5 minutes wait time as a default
+                        if (node1Iter != DNodeMap.end() && node2Iter != DNodeMap.end()) {
+                            auto node1 = node1Iter->second;
+                            auto node2 = node2Iter->second;
+                            
+                            double distance = CalculateDistance(node1, node2);
+                            double busTime = distance / busSpeed;
+                            
+                            // Add wait time for the first stop of each route
+                            if (j == 1) {
+                                busTime += 2.0; // 2 minutes wait time (adjust as needed)
+                            }
+                            
+                            // Bus edges are directed along the route
+                            multiModalRouter->AddEdge(node1ID, node2ID, busTime, true);
                         }
-                        
-                        // Bus edges are directed along the route
-                        multiModalRouter->AddEdge(node1ID, node2ID, busTime, true);
                     }
                 }
             }
@@ -312,60 +285,26 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
         // Convert router path to trip steps with appropriate transportation modes
         if (!routerPath.empty()) {
-            // Create a mapping of bus route connections for quick lookups
-            std::unordered_map<TNodeID, std::unordered_map<TNodeID, bool>> busConnections;
+            ETransportationMode currentMode = ETransportationMode::Walk;
             
-            if (DBusSystem) {
-                for (std::size_t r = 0; r < DBusSystem->RouteCount(); ++r) {
-                    auto route = DBusSystem->RouteByIndex(r);
-                    
-                    std::vector<TNodeID> routeNodes;
-                    // Get all node IDs in this route
-                    for (std::size_t s = 0; s < route->StopCount(); ++s) {
-                        auto stopID = route->GetStopID(s);
-                        TNodeID nodeID = 0;
-                        
-                        // Find the node for this stop
-                        for (std::size_t i = 0; i < DBusSystem->StopCount(); ++i) {
-                            auto stop = DBusSystem->StopByIndex(i);
-                            if (stop->ID() == stopID) {
-                                nodeID = stop->NodeID();
-                                break;
-                            }
-                        }
-                        
-                        if (nodeID != 0) {
-                            routeNodes.push_back(nodeID);
-                        }
-                    }
-                    
-                    // Create connections between consecutive stops
-                    for (std::size_t i = 1; i < routeNodes.size(); ++i) {
-                        busConnections[routeNodes[i-1]][routeNodes[i]] = true;
-                    }
-                }
-            }
-            
-            // Determine transportation mode for each step
             for (size_t i = 0; i < routerPath.size(); ++i) {
                 TTripStep step;
                 TNodeID currentNodeID = routerPath[i];
                 
-                // Default to walking mode
-                step.first = ETransportationMode::Walk;
-                
-                // Check if this step is part of a bus route
                 if (i > 0) {
                     TNodeID prevNodeID = routerPath[i-1];
                     
                     // Check if there's a bus connection between these nodes
-                    auto prevIter = busConnections.find(prevNodeID);
-                    if (prevIter != busConnections.end() && 
+                    auto prevIter = DBusConnections.find(prevNodeID);
+                    if (prevIter != DBusConnections.end() && 
                         prevIter->second.find(currentNodeID) != prevIter->second.end()) {
-                        step.first = ETransportationMode::Bus;
+                        currentMode = ETransportationMode::Bus;
+                    } else {
+                        currentMode = ETransportationMode::Walk;
                     }
                 }
                 
+                step.first = currentMode;
                 step.second = currentNodeID;
                 path.push_back(step);
             }
@@ -381,8 +320,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
             return false;
         }
 
-        // Build meaningful description of the path
-        // Removed unused currentMode variable
         TNodeID currentNodeID = path[0].second;
         
         auto nodeIter = DNodeMap.find(currentNodeID);
@@ -400,6 +337,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
         }
         desc.push_back(startDesc);
 
+        ETransportationMode prevMode = path[0].first;
+        
         for (std::size_t i = 1; i < path.size(); ++i) {
             const auto &step = path[i];
             ETransportationMode mode = step.first;
@@ -412,28 +351,26 @@ struct CDijkstraTransportationPlanner::SImplementation {
             
             auto node = nodeIter->second;
 
-            std::string stepDesc;
-            
             // Mode change detection
-            if (i > 1 && mode != path[i-1].first) {
-                // Mode changed, add a transition description
+            if (mode != prevMode) {
+                std::string transitionDesc;
                 switch (mode) {
                 case ETransportationMode::Walk:
-                    stepDesc = "Switch to walking";
-                    desc.push_back(stepDesc);
+                    transitionDesc = "Switch to walking";
                     break;
                 case ETransportationMode::Bike:
-                    stepDesc = "Switch to biking";
-                    desc.push_back(stepDesc);
+                    transitionDesc = "Switch to biking";
                     break;
                 case ETransportationMode::Bus:
-                    stepDesc = "Switch to bus";
-                    desc.push_back(stepDesc);
+                    transitionDesc = "Switch to bus";
                     break;
                 }
+                desc.push_back(transitionDesc);
+                prevMode = mode;
             }
 
             // Create description based on transportation mode
+            std::string stepDesc;
             switch (mode) {
             case ETransportationMode::Walk:
                 stepDesc = "Walk to ";
