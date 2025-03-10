@@ -99,7 +99,7 @@ struct CDijkstraPathRouter::SImplementation{
         
         // Create distance array and predecessor array
         std::vector<double> distance(VertexCount(), std::numeric_limits<double>::infinity());
-        std::vector<TVertexID> predecessor(VertexCount(), -1);
+        std::vector<TVertexID> predecessor(VertexCount(), std::numeric_limits<TVertexID>::max()); // Use max value instead of -1
         
         // Initialize source distance and add to queue
         distance[src] = 0;
@@ -136,10 +136,17 @@ struct CDijkstraPathRouter::SImplementation{
         }
         
         // Reconstruct path
-        for(TVertexID at = dest; at != -1; at = predecessor[at]) {
+        for(TVertexID at = dest; at != src; at = predecessor[at]) {
+            // Check for unreachable vertex (indicated by max value)
+            if(predecessor[at] == std::numeric_limits<TVertexID>::max()) {
+                path.clear(); // No path exists
+                return NoPathExists;
+            }
             path.push_back(at);
-            if(at == src) break;
         }
+        
+        // Add the source vertex
+        path.push_back(src);
         
         // Reverse to get path from src to dest
         std::reverse(path.begin(), path.end());
