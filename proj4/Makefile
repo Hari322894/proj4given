@@ -20,12 +20,18 @@ TEST_OBJ_FILES = $(patsubst $(TEST_DIR)/%.cpp,$(TEST_OBJ_DIR)/%.o,$(TEST_FILES))
 
 # Output binary
 GTEST_TARGET = $(BIN_DIR)/runtests
+TRANSPLANNER_TARGET = $(BIN_DIR)/transplanner
 
 # Default target
-all: $(GTEST_TARGET)
+all: $(GTEST_TARGET) $(TRANSPLANNER_TARGET)
 
 # Rule to build the Google Test binary
 $(GTEST_TARGET): $(SRC_OBJ_FILES) $(TEST_OBJ_FILES)
+	@mkdir -p $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+# Rule to build the transplanner binary
+$(TRANSPLANNER_TARGET): $(SRC_OBJ_DIR)/main.o $(filter-out $(SRC_OBJ_DIR)/main_test.o,$(SRC_OBJ_FILES))
 	@mkdir -p $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
@@ -49,7 +55,7 @@ clean:
 	rm -rf $(SRC_OBJ_DIR) $(TEST_OBJ_DIR) $(BIN_DIR)
 
 # Run tests
-test: all
+test: $(GTEST_TARGET)
 	./$(GTEST_TARGET)
 
 # Phony targets
