@@ -9,6 +9,10 @@
 #include <set>
 #include <iostream> // Added for printing
 
+// Define missing types
+using TBusID = std::size_t;
+using TStopID = std::size_t;
+
 // Define M_PI if not defined
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -122,8 +126,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
                     std::shared_ptr<CStreetMap::SNode> node1 = DNodes[node1Iter->second];
                     std::shared_ptr<CStreetMap::SNode> node2 = DNodes[node2Iter->second];
 
-                    // Treat bus routes as bidirectional unless explicitly marked otherwise
-                    double busDistance = CalculateDistance(node1, node2);
+                    // Uncomment and use this if needed:
+                    // double busDistance = CalculateDistance(node1, node2);
                     // Bus edges will be handled separately in FindFastestPath
                 }
             }
@@ -259,7 +263,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
         // but in a real implementation, you would compute bus paths too
         
         // Find the closest bus stops to source and destination
-        std::vector<std::pair<TStopID, double>> srcStops, destStops;
+        // Comment out the problematic declaration and use properly typed containers
+        // std::vector<std::pair<TStopID, double>> srcStops, destStops;
         
         // In a full implementation, you would:
         // 1. Find the nearest bus stops to src and dest
@@ -321,7 +326,10 @@ struct CDijkstraTransportationPlanner::SImplementation {
             std::cout << "Fastest Bus Path Time V1->V3 is as expected: " << (busTime < walkTime ? "1" : "0") << std::endl;
             std::cout << "Fastest Bus Path Start Node: " << src << std::endl;
             std::cout << "Fastest Bus Path End Node: " << dest << std::endl;
-            std::cout << "Fastest Bus Path Description Valid: " << (GetPathDescription(busTripPath, std::vector<std::string>()) ? "1" : "0") << std::endl;
+            
+            // Fix for the rvalue reference issue
+            std::vector<std::string> tempDesc;
+            std::cout << "Fastest Bus Path Description Valid: " << (GetPathDescription(busTripPath, tempDesc) ? "1" : "0") << std::endl;
         }
         
         // Return the faster option
