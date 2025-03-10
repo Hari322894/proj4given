@@ -1,9 +1,9 @@
-#include "CTransportationPlannerCommandLine.h"
-#include "CFileDataSource.h"
-#include "CFileDataSink.h"
-#include "CFileDataFactory.h"
+#include "TransportationPlannerCommandLine.h"
+#include "FileDataSource.h"
+#include "FileDataSink.h"
+#include "FileDataFactory.h"
 #include "DijkstraTransportationPlanner.h"
-#include "STransportationPlannerConfig.h"
+#include "TransportationPlannerConfig.h"
 #include <memory>
 
 class MockStreetMap : public CStreetMap {
