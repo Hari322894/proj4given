@@ -1,104 +1,118 @@
-#include "DSVReader.h"
-#include "StringUtils.h"
-#include <string>
-#include <iostream>
+#include "DSVReader.h" // including header file for CDSVReader class usage
 
- 
-struct CDSVReader::SImplementation{
-    std::shared_ptr< CDataSource > DSVRsource;
-    char DSVRdelimiter;
-    std::string str;
-    char current_char;
-    char next_char;
-    int ignore;
+// implementing details of DSV Reader into struct function
+struct CDSVReader::SImplementation {
+    // shared pointer to datasource in order for reading
+    std::shared_ptr<CDataSource> DataSource;
+    // char variable used to separate values in the file
+    char Delimiter;
 
-    SImplementation(std::shared_ptr< CDataSource > src, char delimiter){
-    DSVRsource = src;
-    DSVRdelimiter = delimiter;
-    };
+    // initialize my source and delimiter before moving on any further
+    SImplementation(std::shared_ptr<CDataSource> src, char delimiter)
+        : DataSource(std::move(src)), Delimiter(delimiter) {}
 
-    bool End() const{
-    return DSVRsource->End();
-    };
-
-    bool ReadRow(std::vector< std::string > &row){
-    row.clear();
-    if(DSVRsource->End())
-    {
-        return false;
-    }
-    ignore = 0;
-    while(!DSVRsource->End())
-    {
-        DSVRsource->Get(current_char);
-        if(current_char == DSVRdelimiter && ignore != 1) //if meet the delimiter and the delimiter is not part of the string
-        {
-            row.push_back(str);
-            str = "";
-            ignore = 0;
-        }
-        else if(current_char == '\n') //if meet the newline character, break the loop
-        {
-            row.push_back(str);
-            str = "";
-            return true;
-        }
-        else if(current_char == '\"') //if meet the quotation mark
-        {
-            DSVRsource->Peek(next_char);//peek to see if it is double quotation
-            if(next_char == '\"') //if it is double quotation, peek to see if it is before/after the string
-            {
-                DSVRsource->Peek(next_char);
-                if(next_char == DSVRdelimiter)//if the double quotation mark is after the string
-                {
-                    DSVRsource->Get(current_char);
-                    row.push_back(str);
-                    str = "";
-                    ignore = 0;
+    // reading the row which is most likely a vector of strings
+    bool ReadRow(std::vector<std::string>& currentRow) {
+        // begin with an empty row
+        currentRow.clear();
+        
+        // a string to get data for each cell
+        std::string currentCell;
+        // a variable to store the character read from the data source
+        char currentChar;
+        // determines if we are inside a quoted string
+        bool isInQuotes = false;
+        // to track whether any data has been read
+        bool data = false;
+    
+        // read characters until reaching the end of the data source
+        while (!DataSource->End()) {
+            // if unable to read a charcter return false
+            if (!DataSource->Get(currentChar)) {
+                return false;
+            }
+    
+            // if a character was successfully read then we've encountered data
+            data = true;
+    
+            // having quotes for the current characters
+            if (currentChar == '"') {
+                // check for double quotes in a row
+                if (!DataSource->End()) {
+                    char nextChar;
+                    // attempt to peek at the next character from the DataSource.
+                    bool peekResult = DataSource->Peek(nextChar);
+                    if (peekResult && nextChar == '"') {
+                        // if the next character is another quote treat it as an escaped quote
+                        DataSource->Get(nextChar); // Takes the second quote
+                        currentCell += '"'; // add a single quote to the current cell
+                    } else if (isInQuotes) {
+                        // we are inside quotes and find another quote, it’s the end of the quoted section
+                        isInQuotes = false;
+                    } else {
+                        // we are starting a new quoted section
+                        isInQuotes = true;
+                    }
+                } else if (isInQuotes) {
+                    // if we are at the end of the file and inside quotes, close quote section
+                    isInQuotes = false;
+                } else {
+                    // if at the end of the file and not inside quotes, begin new quote section
+                    isInQuotes = true;
                 }
-                else//if the double quotation mark is before the string
-                {
-                    DSVRsource->Get(current_char);
-                    str = str + current_char;
+            }
+            // if we hit a delimiter and we're not inside quotes, it marks the end of the current cell
+            else if (currentChar == Delimiter && !isInQuotes) {
+                currentRow.push_back(currentCell); // add the completed cell to the row
+                currentCell.clear(); // prepare for the next cell by clearing the cell
+            }
+            // end of the row detected (\n or \r return), unless inside quotes
+            else if ((currentChar == '\n' || currentChar == '\r') && !isInQuotes) {
+                if (!currentCell.empty() || !currentRow.empty()) {
+                    currentRow.push_back(currentCell); // Add any remaining data in the cell with this line
                 }
+    
+                // \r\n handling
+                if (currentChar == '\r' && !DataSource->End()) {
+                    char nextChar;
+                    bool peekResult = DataSource->Peek(nextChar);
+                    if (peekResult && nextChar == '\n') {
+                        // if the next character is '\n', take it in to avoid treating it as part of the next row
+                        DataSource->Get(nextChar);
+                    }
+                }
+    
+                return true; // successfully read the row and returns true
             }
-            else if (next_char == DSVRdelimiter)//if the delimiter is following the quotaation mark
-            {
-                DSVRsource->Get(current_char);
-                row.push_back(str);
-                str = "";
-                ignore = 0;
-            }
-            else
-            {
-                ignore = 1;
+            // adding regular character to the current cell
+            else {
+                currentCell += currentChar;
             }
         }
-        else//normal cases, add the current char to the string in order to push back it later
-        {
-            str = str + current_char;
+    
+        // any remaining data in the current cell push it into the row
+        if (!currentCell.empty() || data) {
+            currentRow.push_back(currentCell);
         }
+    
+        // return true if any content was read
+        return data;
     }
-    row.push_back(str);
-    return true;
-
-    }
-
 };
 
-        
-CDSVReader::CDSVReader(std::shared_ptr< CDataSource > src, char delimiter){
-    DImplementation = std::make_unique<SImplementation>(src, delimiter); //init Simplementation
+// constructor for DSV Reader class
+CDSVReader::CDSVReader(std::shared_ptr<CDataSource> src, char delimiter)
+    : DImplementation(std::make_unique<SImplementation>(src, delimiter)) {}
+
+// destructor for DSV Reader class
+CDSVReader::~CDSVReader() = default;
+
+// check if we've reached the end of data source
+bool CDSVReader::End() const {
+    return DImplementation->DataSource->End();
 }
 
-bool CDSVReader::End() const{
-    return DImplementation->End();
-}
-
-CDSVReader::~CDSVReader(){
-
-}
-
-bool CDSVReader::ReadRow(std::vector< std::string > &row){
+// read a row of data from the source
+bool CDSVReader::ReadRow(std::vector<std::string> &row) {
     return DImplementation->ReadRow(row);
 }
