@@ -21,11 +21,19 @@ struct CTransportationPlannerCommandLine::SImplementation {
           DErrorSink(errsink), DResultFactory(results), DPlanner(planner) {
     }
 
+    // Helper function to convert string to vector<char>
+    std::vector<char> StringToVector(const std::string &str) {
+        return std::vector<char>(str.begin(), str.end());
+    }
+
     bool ProcessCommands() {
+        std::vector<char> buffer(1024); // Buffer for reading commands
         std::string command;
         
         // Keep reading commands until end of input
-        while(DCommandSource->Read(command)) {
+        while(DCommandSource->Read(buffer, buffer.size())) {
+            // Convert buffer to string (assuming null-terminated)
+            command = std::string(buffer.data());
             std::stringstream CommandStream(command);
             std::string CommandType;
             CommandStream >> CommandType;
@@ -49,7 +57,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
             else {
                 // Unknown command
                 std::string ErrorMessage = "Unknown command: " + CommandType + "\n";
-                DErrorSink->Write(ErrorMessage);
+                DErrorSink->Write(StringToVector(ErrorMessage));
             }
         }
         
@@ -64,12 +72,12 @@ struct CTransportationPlannerCommandLine::SImplementation {
             "shortest <srcID> <destID> - Find the shortest path between two nodes\n"
             "fastest <srcID> <destID> - Find the fastest path between two nodes\n";
         
-        DOutputSink->Write(HelpMessage);
+        DOutputSink->Write(StringToVector(HelpMessage));
     }
 
     void ProcessCountCommand() {
         std::string CountMessage = "Node Count: " + std::to_string(DPlanner->NodeCount()) + "\n";
-        DOutputSink->Write(CountMessage);
+        DOutputSink->Write(StringToVector(CountMessage));
     }
 
     void ProcessNodeCommand(std::stringstream &CommandStream) {
@@ -86,15 +94,16 @@ struct CTransportationPlannerCommandLine::SImplementation {
                         << Node->Location().first << ", " 
                         << Node->Location().second << "\n";
                 
-                DOutputSink->Write(NodeInfo.str());
+                DOutputSink->Write(StringToVector(NodeInfo.str()));
             }
             else {
                 std::string ErrorMessage = "Invalid node index: " + std::to_string(NodeIndex) + "\n";
-                DErrorSink->Write(ErrorMessage);
+                DErrorSink->Write(StringToVector(ErrorMessage));
             }
         }
         else {
-            DErrorSink->Write("Invalid node command format. Usage: node <index>\n");
+            std::string ErrorMsg = "Invalid node command format. Usage: node <index>\n";
+            DErrorSink->Write(StringToVector(ErrorMsg));
         }
     }
 
@@ -119,15 +128,16 @@ struct CTransportationPlannerCommandLine::SImplementation {
                 }
                 PathInfo << "\n";
                 
-                DOutputSink->Write(PathInfo.str());
+                DOutputSink->Write(StringToVector(PathInfo.str()));
             }
             else {
                 std::string ErrorMessage = "No path exists between " + std::to_string(SrcID) + " and " + std::to_string(DestID) + "\n";
-                DErrorSink->Write(ErrorMessage);
+                DErrorSink->Write(StringToVector(ErrorMessage));
             }
         }
         else {
-            DErrorSink->Write("Invalid shortest command format. Usage: shortest <srcID> <destID>\n");
+            std::string ErrorMsg = "Invalid shortest command format. Usage: shortest <srcID> <destID>\n";
+            DErrorSink->Write(StringToVector(ErrorMsg));
         }
     }
 
@@ -170,15 +180,16 @@ struct CTransportationPlannerCommandLine::SImplementation {
                     PathInfo << "\n";
                 }
                 
-                DOutputSink->Write(PathInfo.str());
+                DOutputSink->Write(StringToVector(PathInfo.str()));
             }
             else {
                 std::string ErrorMessage = "No path exists between " + std::to_string(SrcID) + " and " + std::to_string(DestID) + "\n";
-                DErrorSink->Write(ErrorMessage);
+                DErrorSink->Write(StringToVector(ErrorMessage));
             }
         }
         else {
-            DErrorSink->Write("Invalid fastest command format. Usage: fastest <srcID> <destID>\n");
+            std::string ErrorMsg = "Invalid fastest command format. Usage: fastest <srcID> <destID>\n";
+            DErrorSink->Write(StringToVector(ErrorMsg));
         }
     }
 };
