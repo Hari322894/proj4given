@@ -1,5 +1,7 @@
 #include "TransportationPlannerCommandLine.h"
 #include <iostream>
+#include <string>
+#include <vector>
 
 struct CTransportationPlannerCommandLine::SImplementation {
     std::shared_ptr<CDataSource> CmdSource;
@@ -14,33 +16,42 @@ struct CTransportationPlannerCommandLine::SImplementation {
         : CmdSource(cmdsrc), OutSink(outsink), ErrSink(errsink), DataFactory(results), Planner(planner) {}
 
     bool ProcessCommands() {
-        // Implement command processing here
+        std::vector<char> commandBuffer;
         std::string command;
         while (!CmdSource->End()) {
-            if (CmdSource->Get(command)) {
-                if (command == "NodeCount") {
-                    auto nodeCount = Planner->NodeCount();
-                    OutSink->Write("NodeCount: " + std::to_string(nodeCount) + "\n");
-                } else if (command == "FindShortestPath") {
-                    // Example processing for FindShortestPath command
-                    // You need to implement actual command parsing and processing logic
-                    TNodeID src, dest;
-                    std::vector<TNodeID> path;
-                    double distance = Planner->FindShortestPath(src, dest, path);
-                    OutSink->Write("Shortest Path Distance: " + std::to_string(distance) + "\n");
-                } else if (command == "FindFastestPath") {
-                    // Example processing for FindFastestPath command
-                    // You need to implement actual command parsing and processing logic
-                    TNodeID src, dest;
-                    std::vector<TTripStep> path;
-                    double time = Planner->FindFastestPath(src, dest, path);
-                    OutSink->Write("Fastest Path Time: " + std::to_string(time) + "\n");
-                } else {
-                    ErrSink->Write("Unknown command: " + command + "\n");
+            char ch;
+            while (CmdSource->Get(ch)) {
+                if (ch == '\n') {
+                    break;
                 }
+                commandBuffer.push_back(ch);
+            }
+            command = std::string(commandBuffer.begin(), commandBuffer.end());
+            commandBuffer.clear();
+
+            if (command == "NodeCount") {
+                auto nodeCount = Planner->NodeCount();
+                WriteToSink(OutSink, "NodeCount: " + std::to_string(nodeCount) + "\n");
+            } else if (command == "FindShortestPath") {
+                TNodeID src = 1, dest = 2; // Example values, replace with actual parsing
+                std::vector<TNodeID> path;
+                double distance = Planner->FindShortestPath(src, dest, path);
+                WriteToSink(OutSink, "Shortest Path Distance: " + std::to_string(distance) + "\n");
+            } else if (command == "FindFastestPath") {
+                TNodeID src = 1, dest = 2; // Example values, replace with actual parsing
+                std::vector<TTripStep> path;
+                double time = Planner->FindFastestPath(src, dest, path);
+                WriteToSink(OutSink, "Fastest Path Time: " + std::to_string(time) + "\n");
+            } else {
+                WriteToSink(ErrSink, "Unknown command: " + command + "\n");
             }
         }
         return true;
+    }
+
+    void WriteToSink(std::shared_ptr<CDataSink> sink, const std::string &message) {
+        std::vector<char> buffer(message.begin(), message.end());
+        sink->Write(buffer);
     }
 };
 
