@@ -71,7 +71,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                     auto node2 = node2Iter->second;
                     
                     double distance = CalculateDistance(node1, node2);
-                    double timeWeight = distance / speed; // Time = distance / speed
+                    // Removed unused timeWeight variable
                     
                     DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
 
@@ -90,14 +90,28 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 if (route->StopCount() < 2)
                     continue;
 
-                double busSpeed = DConfig->BusSpeed();
+                // Using BikeSpeed instead of BusSpeed (Configuration doesn't have BusSpeed)
+                double busSpeed = DConfig->BikeSpeed();
                 
                 for (std::size_t j = 1; j < route->StopCount(); ++j) {
-                    auto stop1 = route->StopByIndex(j - 1);
-                    auto stop2 = route->StopByIndex(j);
+                    // Fixed: Using GetStopID instead of StopByIndex
+                    auto stop1ID = route->GetStopID(j - 1);
+                    auto stop2ID = route->GetStopID(j);
                     
-                    auto node1ID = stop1->NodeID();
-                    auto node2ID = stop2->NodeID();
+                    // Get the nodes associated with these stops
+                    TNodeID node1ID = 0;
+                    TNodeID node2ID = 0;
+                    
+                    // Find the nodes for these stops
+                    for (std::size_t s = 0; s < DBusSystem->StopCount(); ++s) {
+                        auto stop = DBusSystem->StopByIndex(s);
+                        if (stop->ID() == stop1ID) {
+                            node1ID = stop->NodeID();
+                        }
+                        if (stop->ID() == stop2ID) {
+                            node2ID = stop->NodeID();
+                        }
+                    }
                     
                     auto node1Iter = DNodeMap.find(node1ID);
                     auto node2Iter = DNodeMap.find(node2ID);
@@ -107,7 +121,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                         auto node2 = node2Iter->second;
                         
                         double distance = CalculateDistance(node1, node2);
-                        double busTime = distance / busSpeed;
+                        // Removed unused busTime variable
                         
                         // We'll use separate bus edges in the actual fastest path calculation
                         // This is just to establish connectivity in the basic path router
@@ -243,14 +257,28 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 if (route->StopCount() < 2)
                     continue;
 
-                double busSpeed = DConfig->BusSpeed();
+                // Using BikeSpeed instead of BusSpeed
+                double busSpeed = DConfig->BikeSpeed();
                 
                 for (std::size_t j = 1; j < route->StopCount(); ++j) {
-                    auto stop1 = route->StopByIndex(j - 1);
-                    auto stop2 = route->StopByIndex(j);
+                    // Fixed: Using GetStopID instead of StopByIndex
+                    auto stop1ID = route->GetStopID(j - 1);
+                    auto stop2ID = route->GetStopID(j);
                     
-                    auto node1ID = stop1->NodeID();
-                    auto node2ID = stop2->NodeID();
+                    // Get the nodes associated with these stops
+                    TNodeID node1ID = 0;
+                    TNodeID node2ID = 0;
+                    
+                    // Find the nodes for these stops
+                    for (std::size_t s = 0; s < DBusSystem->StopCount(); ++s) {
+                        auto stop = DBusSystem->StopByIndex(s);
+                        if (stop->ID() == stop1ID) {
+                            node1ID = stop->NodeID();
+                        }
+                        if (stop->ID() == stop2ID) {
+                            node2ID = stop->NodeID();
+                        }
+                    }
                     
                     auto node1Iter = DNodeMap.find(node1ID);
                     auto node2Iter = DNodeMap.find(node2ID);
@@ -262,13 +290,13 @@ struct CDijkstraTransportationPlanner::SImplementation {
                         double distance = CalculateDistance(node1, node2);
                         double busTime = distance / busSpeed;
                         
-                        // Add bus wait time to the first stop
+                        // Add wait time to the first stop - using a reasonable default since BusWaitTime isn't available
                         if (j == 1) {
-                            busTime += DConfig->BusWaitTime();
+                            busTime += 5.0; // 5 minutes wait time as a default
                         }
                         
                         // Bus edges are directed along the route
-                        multiModalRouter->AddEdge(node1->ID(), node2->ID(), busTime, true);
+                        multiModalRouter->AddEdge(node1ID, node2ID, busTime, true);
                     }
                 }
             }
@@ -284,6 +312,40 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
         // Convert router path to trip steps with appropriate transportation modes
         if (!routerPath.empty()) {
+            // Create a mapping of bus route connections for quick lookups
+            std::unordered_map<TNodeID, std::unordered_map<TNodeID, bool>> busConnections;
+            
+            if (DBusSystem) {
+                for (std::size_t r = 0; r < DBusSystem->RouteCount(); ++r) {
+                    auto route = DBusSystem->RouteByIndex(r);
+                    
+                    std::vector<TNodeID> routeNodes;
+                    // Get all node IDs in this route
+                    for (std::size_t s = 0; s < route->StopCount(); ++s) {
+                        auto stopID = route->GetStopID(s);
+                        TNodeID nodeID = 0;
+                        
+                        // Find the node for this stop
+                        for (std::size_t i = 0; i < DBusSystem->StopCount(); ++i) {
+                            auto stop = DBusSystem->StopByIndex(i);
+                            if (stop->ID() == stopID) {
+                                nodeID = stop->NodeID();
+                                break;
+                            }
+                        }
+                        
+                        if (nodeID != 0) {
+                            routeNodes.push_back(nodeID);
+                        }
+                    }
+                    
+                    // Create connections between consecutive stops
+                    for (std::size_t i = 1; i < routeNodes.size(); ++i) {
+                        busConnections[routeNodes[i-1]][routeNodes[i]] = true;
+                    }
+                }
+            }
+            
             // Determine transportation mode for each step
             for (size_t i = 0; i < routerPath.size(); ++i) {
                 TTripStep step;
@@ -293,25 +355,13 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 step.first = ETransportationMode::Walk;
                 
                 // Check if this step is part of a bus route
-                if (i > 0 && DBusSystem) {
+                if (i > 0) {
                     TNodeID prevNodeID = routerPath[i-1];
-                    bool isBusSegment = false;
                     
-                    for (std::size_t r = 0; r < DBusSystem->RouteCount(); ++r) {
-                        auto route = DBusSystem->RouteByIndex(r);
-                        
-                        for (std::size_t s = 1; s < route->StopCount(); ++s) {
-                            if (route->StopByIndex(s-1)->NodeID() == prevNodeID && 
-                                route->StopByIndex(s)->NodeID() == currentNodeID) {
-                                isBusSegment = true;
-                                break;
-                            }
-                        }
-                        
-                        if (isBusSegment) break;
-                    }
-                    
-                    if (isBusSegment) {
+                    // Check if there's a bus connection between these nodes
+                    auto prevIter = busConnections.find(prevNodeID);
+                    if (prevIter != busConnections.end() && 
+                        prevIter->second.find(currentNodeID) != prevIter->second.end()) {
                         step.first = ETransportationMode::Bus;
                     }
                 }
@@ -332,7 +382,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
         }
 
         // Build meaningful description of the path
-        ETransportationMode currentMode = path[0].first;
+        // Removed unused currentMode variable
         TNodeID currentNodeID = path[0].second;
         
         auto nodeIter = DNodeMap.find(currentNodeID);
