@@ -1,5 +1,5 @@
 #include "TransportationPlannerConfig.h"
-#include "CTransportationPlannerCommandLine.h"
+#include "TransportationPlannerCommandLine.h"
 
 struct CTransportationPlannerCommandLine::SImplementation {
 
