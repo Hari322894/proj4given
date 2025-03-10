@@ -6,10 +6,10 @@
 #include <memory>
 
 int main(int argc, char *argv[]) {
-    auto cmdsrc = std::make_shared<FileDataSource>("input.txt");
-    auto outsink = std::make_shared<FileDataSink>("output.txt");
-    auto errsink = std::make_shared<FileDataSink>("error.txt");
-    auto results = std::make_shared<FileDataFactory>();
+    auto cmdsrc = std::make_shared<CFileDataSource>("input.txt");
+    auto outsink = std::make_shared<CFileDataSink>("output.txt");
+    auto errsink = std::make_shared<CFileDataSink>("error.txt");
+    auto results = std::make_shared<CFileDataFactory>();
     auto config = std::make_shared<STransportationPlannerConfig>();
     auto planner = std::make_shared<CDijkstraTransportationPlanner>(config);
 
