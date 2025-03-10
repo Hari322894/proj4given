@@ -1,4 +1,4 @@
-=#include "DijkstraTransportationPlanner.h"
+#include "DijkstraTransportationPlanner.h"
 #include "DijkstraPathRouter.h"
 #include <limits>
 #include <algorithm>
@@ -46,15 +46,10 @@ struct CDijkstraTransportationPlanner::SImplementation {
             auto way = DStreetMap->WayByIndex(i);
             if (way->NodeCount() < 2) continue;
             
-            // We'll calculate the speed for time estimation
+            // We won't use this variable directly but it's needed for context
             double speed = config->DefaultSpeedLimit();
             if (way->HasAttribute("maxspeed")) {
-                try {
-                    speed = std::stod(way->GetAttribute("maxspeed"));
-                } catch(...) {
-                    // If conversion fails, use default speed
-                    speed = config->DefaultSpeedLimit();
-                }
+                speed = std::stod(way->GetAttribute("maxspeed"));
             }
             
             for (std::size_t j = 1; j < way->NodeCount(); ++j) {
@@ -73,9 +68,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 
                 if (node1 && node2) {
                     double distance = CalculateDistance(node1, node2);
-                    double time = distance / speed; // Time = distance / speed
-                    
-                    // Add edges with distance weights for shortest path
                     DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
                     
                     // Add edge in reverse if way is bidirectional
@@ -123,12 +115,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
         path.clear();
         
-        // Check if source and destination are the same
-        if (src == dest) {
-            path.push_back(src);
-            return 0.0;
-        }
-        
         // Check if nodes exist
         bool srcExists = false, destExists = false;
         for (const auto& node : DNodes) {
@@ -166,18 +152,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
             step.second = src;
             path.push_back(step);
             return 0.0;
-        }
-        
-        // Check if nodes exist
-        bool srcExists = false, destExists = false;
-        for (const auto& node : DNodes) {
-            if (node->ID() == src) srcExists = true;
-            if (node->ID() == dest) destExists = true;
-            if (srcExists && destExists) break;
-        }
-        
-        if (!srcExists || !destExists) {
-            return std::numeric_limits<double>::max(); // No path exists
         }
         
         // Find paths using different transportation modes
