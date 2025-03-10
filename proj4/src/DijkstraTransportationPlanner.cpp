@@ -46,12 +46,13 @@ struct CDijkstraTransportationPlanner::SImplementation {
             auto way = DStreetMap->WayByIndex(i);
             if (way->NodeCount() < 2) continue;
             
-            double speed = way->HasAttribute("maxspeed") ? 
-                            std::stod(way->GetAttribute("maxspeed")) : 
-                            config->DefaultSpeedLimit();
+            // We won't use this variable directly but it's needed for context
+            double speed = config->DefaultSpeedLimit();
+            if (way->HasAttribute("maxspeed")) {
+                speed = std::stod(way->GetAttribute("maxspeed"));
+            }
             
             for (std::size_t j = 1; j < way->NodeCount(); ++j) {
-                // Fixed: Using GetNodeID instead of NodeID
                 auto node1ID = way->GetNodeID(j-1);
                 auto node2ID = way->GetNodeID(j);
                 
@@ -84,7 +85,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
         const double EarthRadiusKm = 6371.0;
         const double DegreesToRadians = M_PI / 180.0;
         
-        // Fixed: Using node->Location().first/second instead of GetLatitude/GetLongitude
         double lat1 = node1->Location().first * DegreesToRadians;
         double lon1 = node1->Location().second * DegreesToRadians;
         double lat2 = node2->Location().first * DegreesToRadians;
@@ -93,7 +93,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
         double dlon = lon2 - lon1;
         double dlat = lat2 - lat1;
         
-        // Use global sin, cos functions instead of std::sin, std::cos
         double a = sin(dlat/2) * sin(dlat/2) + 
                   cos(lat1) * cos(lat2) * 
                   sin(dlon/2) * sin(dlon/2);
@@ -125,14 +124,14 @@ struct CDijkstraTransportationPlanner::SImplementation {
         }
         
         if (!srcExists || !destExists) {
-            return -1.0; // No path exists
+            return std::numeric_limits<double>::max(); // Indicate no path exists
         }
         
         std::vector<CPathRouter::TVertexID> routerPath;
         double distance = DPathRouter->FindShortestPath(src, dest, routerPath);
         
         if (distance < 0) {
-            return -1.0; // No path exists
+            return std::numeric_limits<double>::max(); // Indicate no path exists
         }
         
         // Convert router path to node IDs
@@ -146,16 +145,25 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
         path.clear();
         
-        // Simplified implementation - in reality, would consider bus routes, walking speeds, etc.
-        std::vector<TNodeID> shortestPath;
-        double distance = FindShortestPath(src, dest, shortestPath);
-        
-        if (distance < 0) {
-            return -1.0; // No path exists
+        // Check if source and destination are the same
+        if (src == dest) {
+            TTripStep step;
+            step.first = ETransportationMode::Walk;
+            step.second = src;
+            path.push_back(step);
+            return 0.0;
         }
         
-        // Convert shortest path to trip steps (walking only for simplicity)
-        for (const auto& nodeID : shortestPath) {
+        // Find paths using different transportation modes
+        std::vector<TNodeID> walkPath;
+        double walkDistance = FindShortestPath(src, dest, walkPath);
+        
+        if (walkDistance == std::numeric_limits<double>::max()) {
+            return std::numeric_limits<double>::max(); // No path exists
+        }
+        
+        // Convert shortest path to trip steps (walking only for now)
+        for (const auto& nodeID : walkPath) {
             TTripStep step;
             step.first = ETransportationMode::Walk;
             step.second = nodeID;
@@ -163,7 +171,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
         }
         
         // Calculate time based on walking speed
-        double walkTime = distance / DConfig->WalkSpeed();
+        double walkTime = walkDistance / DConfig->WalkSpeed();
         return walkTime;
     }
 
@@ -174,21 +182,62 @@ struct CDijkstraTransportationPlanner::SImplementation {
             return false;
         }
         
-        // Simple implementation - just describe each step
-        for (std::size_t i = 0; i < path.size(); ++i) {
+        // Build meaningful description of the path
+        ETransportationMode currentMode = path[0].first;
+        TNodeID currentNodeID = path[0].second;
+        std::shared_ptr<CStreetMap::SNode> currentNode = nullptr;
+        
+        for (const auto& node : DNodes) {
+            if (node->ID() == currentNodeID) {
+                currentNode = node;
+                break;
+            }
+        }
+        
+        if (!currentNode) {
+            return false;
+        }
+        
+        std::string startDesc = "Start at ";
+        if (currentNode->HasAttribute("name")) {
+            startDesc += currentNode->GetAttribute("name");
+        } else {
+            startDesc += "node " + std::to_string(currentNodeID);
+        }
+        desc.push_back(startDesc);
+        
+        for (std::size_t i = 1; i < path.size(); ++i) {
             const auto& step = path[i];
             std::string stepDesc;
             
+            // Find node information
+            std::shared_ptr<CStreetMap::SNode> node = nullptr;
+            for (const auto& n : DNodes) {
+                if (n->ID() == step.second) {
+                    node = n;
+                    break;
+                }
+            }
+            
+            if (!node) continue;
+            
+            // Create description based on transportation mode
             switch (step.first) {
                 case ETransportationMode::Walk:
-                    stepDesc = "Walk to node " + std::to_string(step.second);
+                    stepDesc = "Walk to ";
                     break;
                 case ETransportationMode::Bike:
-                    stepDesc = "Bike to node " + std::to_string(step.second);
+                    stepDesc = "Bike to ";
                     break;
                 case ETransportationMode::Bus:
-                    stepDesc = "Take bus to node " + std::to_string(step.second);
+                    stepDesc = "Take bus to ";
                     break;
+            }
+            
+            if (node->HasAttribute("name")) {
+                stepDesc += node->GetAttribute("name");
+            } else {
+                stepDesc += "node " + std::to_string(step.second);
             }
             
             desc.push_back(stepDesc);
