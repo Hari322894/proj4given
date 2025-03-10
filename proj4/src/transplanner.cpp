@@ -10,6 +10,7 @@
 #include "StandardDataSink.h"
 #include "StandardErrorDataSink.h"
 #include "DSVReader.h"
+#include "XMLReader.h"
 #include <memory>
 #include <iostream>
 #include <string>
@@ -59,12 +60,18 @@ int main(int argc, char *argv[]) {
         // Create results factory
         auto resultsFactory = std::make_shared<CFileDataFactory>("");
        
-        // Load street map
-        auto streetMap = std::make_shared<COpenStreetMap>(mapFilename);
+        // Create XML reader for map file
+        auto mapSource = std::make_shared<CFileDataSource>(mapFilename);
+        auto mapReader = std::make_shared<CXMLReader>(mapSource);
+        
+        // Load street map using XML reader
+        auto streetMap = std::make_shared<COpenStreetMap>(mapReader);
 
-        // Create DSV readers for stop and route files
-        auto stopReader = std::make_shared<CDSVReader>(std::make_shared<CFileDataSource>(stopFilename));
-        auto routeReader = std::make_shared<CDSVReader>(std::make_shared<CFileDataSource>(routeFilename));
+        // Create DSV readers for stop and route files with comma delimiter
+        auto stopSource = std::make_shared<CFileDataSource>(stopFilename);
+        auto routeSource = std::make_shared<CFileDataSource>(routeFilename);
+        auto stopReader = std::make_shared<CDSVReader>(stopSource, ',');
+        auto routeReader = std::make_shared<CDSVReader>(routeSource, ',');
         
         // Create bus system using DSV readers
         auto busSystem = std::make_shared<CCSVBusSystem>(stopReader, routeReader);
