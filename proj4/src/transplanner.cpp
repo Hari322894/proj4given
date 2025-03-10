@@ -3,7 +3,7 @@
 #include "FileDataSink.h"
 #include "FileDataFactory.h"
 #include "DijkstraTransportationPlanner.h"
-#include "STransportationPlannerConfig.h"
+#include "TransportationPlannerConfig.h"
 #include <memory>
 
 int main(int argc, char *argv[]) {
