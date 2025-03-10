@@ -4,76 +4,78 @@
 #include "FileDataFactory.h"
 #include "DijkstraTransportationPlanner.h"
 #include "TransportationPlannerConfig.h"
+#include "CSVBusSystem.h"
+#include "OSMStreetMap.h"
 #include <memory>
-
-class MockStreetMap : public CStreetMap {
-public:
-    std::size_t NodeCount() const noexcept override {
-        return 0;
-    }
-
-    std::size_t WayCount() const noexcept override {
-        return 0;
-    }
-
-    std::shared_ptr<SNode> NodeByIndex(std::size_t index) const noexcept override {
-        return nullptr;
-    }
-
-    std::shared_ptr<SNode> NodeByID(TNodeID id) const noexcept override {
-        return nullptr;
-    }
-
-    std::shared_ptr<SWay> WayByIndex(std::size_t index) const noexcept override {
-        return nullptr;
-    }
-
-    std::shared_ptr<SWay> WayByID(TWayID id) const noexcept override {
-        return nullptr;
-    }
-};
-
-class MockBusSystem : public CBusSystem {
-public:
-    std::size_t StopCount() const noexcept override {
-        return 0;
-    }
-
-    std::size_t RouteCount() const noexcept override {
-        return 0;
-    }
-
-    std::shared_ptr<SStop> StopByIndex(std::size_t index) const noexcept override {
-        return nullptr;
-    }
-
-    std::shared_ptr<SStop> StopByID(TStopID id) const noexcept override {
-        return nullptr;
-    }
-
-    std::shared_ptr<SRoute> RouteByIndex(std::size_t index) const noexcept override {
-        return nullptr;
-    }
-
-    std::shared_ptr<SRoute> RouteByName(const std::string &name) const noexcept override {
-        return nullptr;
-    }
-};
+#include <iostream>
+#include <string>
 
 int main(int argc, char *argv[]) {
-    auto cmdsrc = std::make_shared<CFileDataSource>("input.txt");
-    auto outsink = std::make_shared<CFileDataSink>("output.txt");
-    auto errsink = std::make_shared<CFileDataSink>("error.txt");
-    auto results = std::make_shared<CFileDataFactory>("");
-    auto streetmap = std::make_shared<MockStreetMap>();
-    auto bussystem = std::make_shared<MockBusSystem>();
-    auto config = std::make_shared<STransportationPlannerConfig>(streetmap, bussystem);
-    auto planner = std::make_shared<CDijkstraTransportationPlanner>(config);
-
-    CTransportationPlannerCommandLine commandLine(cmdsrc, outsink, errsink, results, planner);
-    if (!commandLine.ProcessCommands()) {
+    if(argc < 4) {
+        std::cerr << "Usage: " << argv[0] << " <map_file> <stop_file> <route_file> [command_file] [output_file] [error_file]" << std::endl;
         return 1;
     }
 
-    return 0;
+    // Parse command line arguments
+    std::string mapFilename = argv[1];
+    std::string stopFilename = argv[2];
+    std::string routeFilename = argv[3];
+    
+    // Optional command, output, and error files
+    std::string commandFilename = (argc > 4) ? argv[4] : "stdin";
+    std::string outputFilename = (argc > 5) ? argv[5] : "stdout";
+    std::string errorFilename = (argc > 6) ? argv[6] : "stderr";
+    
+    try {
+        // Create data sources and sinks
+        std::shared_ptr<CDataSource> commandSource;
+        std::shared_ptr<CDataSink> outputSink;
+        std::shared_ptr<CDataSink> errorSink;
+        
+        // Command source setup
+        if(commandFilename == "stdin") {
+            commandSource = std::make_shared<CStdinDataSource>();
+        } else {
+            commandSource = std::make_shared<CFileDataSource>(commandFilename);
+        }
+        
+        // Output sink setup
+        if(outputFilename == "stdout") {
+            outputSink = std::make_shared<CStdoutDataSink>();
+        } else {
+            outputSink = std::make_shared<CFileDataSink>(outputFilename);
+        }
+        
+        // Error sink setup
+        if(errorFilename == "stderr") {
+            errorSink = std::make_shared<CStderrDataSink>();
+        } else {
+            errorSink = std::make_shared<CFileDataSink>(errorFilename);
+        }
+        
+        // Create results factory
+        auto resultsFactory = std::make_shared<CFileDataFactory>("");
+        
+        // Load street map and bus system
+        auto streetMap = std::make_shared<COSMStreetMap>(mapFilename);
+        auto busSystem = std::make_shared<CCSVBusSystem>(stopFilename, routeFilename);
+        
+        // Create transportation planner configuration
+        auto config = std::make_shared<STransportationPlannerConfig>(streetMap, busSystem);
+        
+        // Create transportation planner
+        auto planner = std::make_shared<CDijkstraTransportationPlanner>(config);
+        
+        // Create and run command line processor
+        CTransportationPlannerCommandLine commandLine(commandSource, outputSink, errorSink, resultsFactory, planner);
+        if(!commandLine.ProcessCommands()) {
+            return 1;
+        }
+        
+        return 0;
+    }
+    catch(const std::exception &ex) {
+        std::cerr << "Error: " << ex.what() << std::endl;
+        return 1;
+    }
 }
