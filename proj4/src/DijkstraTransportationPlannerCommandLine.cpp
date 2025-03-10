@@ -31,39 +31,56 @@ struct CTransportationPlannerCommandLine::SImplementation {
         std::string command;
         
         // Keep reading commands until end of input
-        while(DCommandSource->Read(buffer, buffer.size())) {
-            // Convert buffer to string (assuming null-terminated)
-            command = std::string(buffer.data());
-            std::stringstream CommandStream(command);
-            std::string CommandType;
-            CommandStream >> CommandType;
-
-            // Handle different command types
-            if(CommandType == "help") {
-                ProcessHelpCommand();
-            }
-            else if(CommandType == "count") {
-                ProcessCountCommand();
-            }
-            else if(CommandType == "node") {
-                ProcessNodeCommand(CommandStream);
-            }
-            else if(CommandType == "shortest") {
-                ProcessShortestPathCommand(CommandStream);
-            }
-            else if(CommandType == "fastest") {
-                ProcessFastestPathCommand(CommandStream);
+        size_t bytesRead;
+        while((bytesRead = DCommandSource->Read(buffer, buffer.size())) > 0) {
+            // Convert buffer to string with proper length
+            command = std::string(buffer.data(), bytesRead);
+            
+            // Check for newline character and process complete commands
+            if(command.find('\n') != std::string::npos) {
+                std::stringstream CommandStream(command);
+                std::string CommandType;
+                CommandStream >> CommandType;
+    
+                // Handle different command types
+                if(CommandType == "help") {
+                    ProcessHelpCommand();
+                }
+                else if(CommandType == "count") {
+                    ProcessCountCommand();
+                }
+                else if(CommandType == "node") {
+                    ProcessNodeCommand(CommandStream);
+                }
+                else if(CommandType == "shortest") {
+                    ProcessShortestPathCommand(CommandStream);
+                }
+                else if(CommandType == "fastest") {
+                    ProcessFastestPathCommand(CommandStream);
+                }
+                else if(CommandType.empty() || CommandType[0] == '\n' || CommandType[0] == '\r') {
+                    // Empty line, just ignore
+                    continue;
+                }
+                else {
+                    // Unknown command
+                    std::string ErrorMessage = "Unknown command: " + CommandType + "\n";
+                    DErrorSink->Write(StringToVector(ErrorMessage));
+                }
             }
             else {
-                // Unknown command
-                std::string ErrorMessage = "Unknown command: " + CommandType + "\n";
+                // Incomplete command, write error
+                std::string ErrorMessage = "Incomplete command (missing newline)\n";
                 DErrorSink->Write(StringToVector(ErrorMessage));
             }
+            
+            // Clear buffer for next read
+            std::fill(buffer.begin(), buffer.end(), 0);
         }
         
         return true;
     }
-
+    
     void ProcessHelpCommand() {
         std::string HelpMessage = 
             "help - Display this help message\n"
