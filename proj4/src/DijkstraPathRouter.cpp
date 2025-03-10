@@ -36,14 +36,14 @@ struct CDijkstraPathRouter::SImplementation{
             auto Search = MapOfWeights.find(id);
 
             if(Search == MapOfWeights.end()){
-                return false;
+                return std::numeric_limits<double>::infinity(); // Return infinity instead of false
             }
             return Search->second;
         }
     };
 
     std::vector< std::shared_ptr< IndVertex > > AllVertices;
-    size_t IndexKeeper = -1;
+    size_t IndexKeeper = 0; // Initialize to 0 instead of -1 since size_t is unsigned
     
     SImplementation(){};
 
@@ -53,11 +53,10 @@ struct CDijkstraPathRouter::SImplementation{
 
     TVertexID AddVertex(std::any tag){
         auto NewVertex = std::make_shared<IndVertex>();
-        IndexKeeper += 1;
         NewVertex->ThisVertexID = IndexKeeper;
         NewVertex->ThisVertexTag = tag;
         AllVertices.push_back(NewVertex);
-        return IndexKeeper;
+        return IndexKeeper++;
     };
     
     std::any GetVertexTag(TVertexID id) const{
