@@ -5,7 +5,7 @@
 #include "DijkstraTransportationPlanner.h"
 #include "TransportationPlannerConfig.h"
 #include "CSVBusSystem.h"
-#include "OSMStreetMap.h"
+#include "StreetMap.h"
 #include <memory>
 #include <iostream>
 #include <string>
