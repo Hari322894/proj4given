@@ -1,162 +1,152 @@
-#include "XMLWriter.h"  //header for the XMLWriter class.
-#include <vector>       //used for managing the element stack as a vector.
-#include <string>       //provides the std::string type for handling XML strings.
+#include "XMLWriter.h"
+#include "StringUtils.h"
+#include <expat.h>
+#include <deque>
+#include <iostream>
 
-struct CXMLWriter::SImplementation {
-    std::shared_ptr<CDataSink> DDataSink;   //data sink used for writing output.
-    std::vector<std::string> DElementList;  //stores the stack of open elements.
+struct CXMLWriter::SImplementation{
+    std:: shared_ptr< CDataSink > DSink;
+    //parser?
 
-    //constructor initializes the data sink.
-    SImplementation(std::shared_ptr<CDataSink> sink)
-        : DDataSink(sink) {}
+    std::vector< std::string > ICElements;
+    void SpecialCharReplace(std::string &str){
+        
+        str = StringUtils::Replace(str,"&","&amp;");
+        str = StringUtils::Replace(str,"\"","&quot;");
+        str = StringUtils::Replace(str,"'","&apos;");
+        str = StringUtils::Replace(str,"<","&lt;");
+        str = StringUtils::Replace(str,">","&gt;");
+    };
+    SImplementation(std::shared_ptr< CDataSink > sink){
+        DSink = sink;
+    };
+    ~SImplementation(){
 
-    //writes a plain string to the data sink 
-    //returns false if writing fails
-    bool OutputString(const std::string& str) {
-        for (char ch : str) {
-            if (!DDataSink->Put(ch)) {
-                return false;
+    }
+
+    bool Flush(){//FIX LATER
+        while(!ICElements.empty()){
+            std::vector<char> Buffer;
+            std::string NameData;
+            //std::cout<<"made into while loop"<<std::endl;
+            //std::cout<<"ICELEMENT size:"<<ICElements.size()<<std::endl;
+            for(int i = ICElements.size()-1; i>=0;i-- ){
+                Buffer.clear();
+                //std::cout<<"ICENAME"<<ICElements[i]<<std::endl;
+                NameData = ICElements[i];
+                Buffer.push_back('<');
+                Buffer.push_back('/');
+                for(int i = 0; i< NameData.length();i++){
+                    Buffer.push_back(NameData[i]);
+                }
+            
+                Buffer.push_back('>');
+               // std::cout<<"SHOUDL APPEAR 3 times"<<std::endl;
+                
+                
+                ICElements.pop_back();
+                
+                if(ICElements.size() > 0){
+                    Buffer.push_back('\n');
+                }
+                //std::cout<<"ABOUT TO WRITE YAYY"<<Bufferstd::endl;
+                DSink->Write(Buffer);
             }
-        }
-        return true;
-    }
 
-    //writes an escaped version of the string (e.g., for special XML characters).
-    //used switch and case
-    bool StringEscaped(const std::string& str) {
-        for (char ch : str) {
-            switch (ch) {
-                case '<':
-                    if (!OutputString("&lt;")) {
-                        return false;
-                    }
-                    break;
-                case '>':
-                    if (!OutputString("&gt;")){
-                         return false;
-                    }
-                        break;
-                case '&':
-                    if (!OutputString("&amp;")){ 
-                        return false;
-                    }
-                        break;
-                case '\'':
-                    if (!OutputString("&apos;")) {
-                    return false;
-                    }
-                    break;
-                case '"':
-                    if (!OutputString("&quot;")){
-                         return false;
-                    }
-                    break;
-                default:
-                    if (!DDataSink->Put(ch)){ 
-                        return false;
-                    }
+        }
+        if(ICElements.empty()){
+            return true;
+        }
+    };
+
+
+    bool WriteEntity(const SXMLEntity &entity){
+        std::vector<char> Buffer;
+        std::string stringpiece;
+        //std::vector< std::string > IncompletElements;
+        if(entity.DType == SXMLEntity::EType::StartElement ||entity.DType == SXMLEntity::EType::CompleteElement){
+           // std::cout<<"MADE IT INTO LOOP"<<std::endl;
+            if(entity.DType == SXMLEntity::EType::StartElement){
+                ICElements.push_back(entity.DNameData);
             }
-        }
-        return true;
-    }
-
-    //closes all remaining open tags
-    //returns false if writing fails
-    bool FinalizeOutput() {
-        for (auto it = DElementList.rbegin(); it != DElementList.rend(); ++it) {
-            if (!OutputString("</") ||
-                !OutputString(*it) ||
-                !OutputString(">")) {
-                return false;
+            //std::cout<<"dnamedata is:"<<stringpiece<<std::endl;
+            stringpiece  = entity.DNameData;
+           // std::cout<<"dnamedata is:"<<stringpiece<<std::endl;
+            Buffer.push_back('<');
+            for(int i = 0; i<stringpiece.length();i++){
+                Buffer.push_back(stringpiece[i]);
+                //std::cout<<"buffer insterted"<<std::endl;
             }
+            //insert attributes
+            for(auto &Attr : entity.DAttributes){
+                std::string AttKey = std::get<0>(Attr);
+                std::string AttValue = std::get<1>(Attr);
+                SpecialCharReplace(AttKey);
+                SpecialCharReplace(AttValue);
+                //std::cout<<"REPLACEDCHAR"<<AttValue<<std::endl;
+                Buffer.push_back(' ');
+                for(int i = 0; i<AttKey.length();i++){
+
+                    Buffer.push_back(AttKey[i]);
+                }
+                Buffer.push_back('=');
+                Buffer.push_back('\"');
+                for(int i = 0; i<AttValue.length();i++){
+                    Buffer.push_back(AttValue[i]);
+                }
+                Buffer.push_back('\"');
+            }
+            if(entity.DType == SXMLEntity::EType::CompleteElement){
+                Buffer.push_back('/');
+            }
+            Buffer.push_back('>');
+            
+            DSink->Write(Buffer);
+            return true;
+            
+
         }
-        DElementList.clear();  // clear the element list once all tags are closed.
-        return true;
-    }
+        if(entity.DType == SXMLEntity::EType::EndElement){
+            stringpiece  = entity.DNameData;
+            Buffer.push_back('<');
+            Buffer.push_back('/');
+            for(int i = 0; i<stringpiece.length();i++){
+                Buffer.push_back(stringpiece[i]);
+            }
+            Buffer.push_back('>');
+            ICElements.pop_back();
+            DSink->Write(Buffer);
+            return true;
 
-    // writes the provided XML entity to the output.
-    bool OutputEntity(const SXMLEntity& entity) {
-        switch (entity.DType) {
-            case SXMLEntity::EType::StartElement:
-                // write the opening tag for the element.
-                if (!OutputString("<") ||
-                    !OutputString(entity.DNameData)) {
-                    return false;
-                }
-                // write all attributes for the element.
-                for (const auto& attr : entity.DAttributes) {
-                    if (!OutputString(" ") ||
-                        !OutputString(attr.first) ||
-                        !OutputString("=\"") ||
-                        !StringEscaped(attr.second) ||
-                        !OutputString("\"")) {
-                        return false;
-                    }
-                }
-                if (!OutputString(">")) {
-                    return false;
-                }
-                DElementList.push_back(entity.DNameData);  // add element to the stack.
-                break;
-
-            case SXMLEntity::EType::EndElement:
-                // write the closing tag for the element.
-                if (!OutputString("</") ||
-                    !OutputString(entity.DNameData) ||
-                    !OutputString(">")) {
-                    return false;
-                }
-                if (!DElementList.empty()) {
-                    DElementList.pop_back();  // remove the element from the stack.
-                }
-                break;
-
-            case SXMLEntity::EType::CharData:
-                // write character data, escaping special characters.
-                if (!StringEscaped(entity.DNameData)) {
-                    return false;
-                }
-                break;
-
-            case SXMLEntity::EType::CompleteElement:
-                // write a self-closing tag for the element.
-                if (!OutputString("<") ||
-                    !OutputString(entity.DNameData)) {
-                    return false;
-                }
-                // write all attributes for the element.
-                for (const auto& attr : entity.DAttributes) {
-                    if (!OutputString(" ") ||
-                        !OutputString(attr.first) ||
-                        !OutputString("=\"") ||
-                        !StringEscaped(attr.second) ||
-                        !OutputString("\"")) {
-                        return false;
-                    }
-                }
-                if (!OutputString("/>")) {
-                    return false;
-                }
-                break;
         }
-        return true;
-    }
+        
+        if(entity.DType == SXMLEntity::EType::CharData){
+            stringpiece = entity.DNameData;
+            SpecialCharReplace(stringpiece);
+            for(int i = 0; i<stringpiece.length();i++){
+                Buffer.push_back(stringpiece[i]);
+            }
+            DSink->Write(Buffer);
+            return true;
+
+        }
+
+    };
+
 };
 
-// constructor initializes the XMLWriter 
-CXMLWriter::CXMLWriter(std::shared_ptr<CDataSink> sink)
-    : DImplementation(std::make_unique<SImplementation>(sink)) {
+CXMLWriter :: CXMLWriter(std::shared_ptr< CDataSink > sink){
+    DImplementation = std::make_unique<SImplementation>(sink);
 }
 
-// destructor 
-CXMLWriter::~CXMLWriter() = default;
+CXMLWriter:: ~CXMLWriter(){
 
-// flushes all remaining open elements 
-bool CXMLWriter::Flush() {
-    return DImplementation->FinalizeOutput();
 }
 
-// writes an XML entity to the output
-bool CXMLWriter::WriteEntity(const SXMLEntity& entity) {
-    return DImplementation->OutputEntity(entity);
+bool CXMLWriter::Flush(){
+    return DImplementation->Flush();
+}
+
+bool CXMLWriter::WriteEntity(const SXMLEntity &entity){
+    return DImplementation->WriteEntity(entity);
 }
