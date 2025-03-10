@@ -106,7 +106,6 @@ TEST(DijkstraPathRouter, NegativeEdge){
     Vertices.push_back(DijkstraPathRouter.AddVertex(0));
     Vertices.push_back(DijkstraPathRouter.AddVertex('k'));
     Vertices.push_back(DijkstraPathRouter.AddVertex(2));
-    Vertices.push_back(DijkstraPathRouter.AddVertex('lol'));
     Vertices.push_back(DijkstraPathRouter.AddVertex(8.99));
 
     DijkstraPathRouter.AddEdge(Vertices[0],Vertices[1],5);
