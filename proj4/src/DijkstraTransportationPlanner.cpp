@@ -1,11 +1,10 @@
-#include "DijkstraTransportationPlanner.h"
+=#include "DijkstraTransportationPlanner.h"
 #include "DijkstraPathRouter.h"
 #include <limits>
 #include <algorithm>
 #include <unordered_map>
 #include <queue>
-#include <cmath>
-#include <iostream> // For debugging output
+#include <cmath> // Added for math functions
 
 // Define M_PI if not defined
 #ifndef M_PI
@@ -47,10 +46,15 @@ struct CDijkstraTransportationPlanner::SImplementation {
             auto way = DStreetMap->WayByIndex(i);
             if (way->NodeCount() < 2) continue;
             
-            // Define speed variable (needed for context even if unused)
+            // We'll calculate the speed for time estimation
             double speed = config->DefaultSpeedLimit();
             if (way->HasAttribute("maxspeed")) {
-                speed = std::stod(way->GetAttribute("maxspeed"));
+                try {
+                    speed = std::stod(way->GetAttribute("maxspeed"));
+                } catch(...) {
+                    // If conversion fails, use default speed
+                    speed = config->DefaultSpeedLimit();
+                }
             }
             
             for (std::size_t j = 1; j < way->NodeCount(); ++j) {
@@ -69,6 +73,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 
                 if (node1 && node2) {
                     double distance = CalculateDistance(node1, node2);
+                    double time = distance / speed; // Time = distance / speed
+                    
+                    // Add edges with distance weights for shortest path
                     DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
                     
                     // Add edge in reverse if way is bidirectional
@@ -76,16 +83,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
                         DPathRouter->AddEdge(node2->ID(), node1->ID(), distance, false);
                     }
                 }
-            }
-        }
-        
-        // Debug Output
-        std::cout << "NodeCount: " << NodeCount() << std::endl;
-        for (size_t i = 0; i < NodeCount(); ++i) {
-            auto node = SortedNodeByIndex(i);
-            if (node) {
-                std::cout << "Node isTrue: 1" << std::endl;
-                std::cout << "NodeId is " << node->ID() << ": 1" << std::endl;
             }
         }
     }
@@ -126,6 +123,12 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
         path.clear();
         
+        // Check if source and destination are the same
+        if (src == dest) {
+            path.push_back(src);
+            return 0.0;
+        }
+        
         // Check if nodes exist
         bool srcExists = false, destExists = false;
         for (const auto& node : DNodes) {
@@ -135,16 +138,14 @@ struct CDijkstraTransportationPlanner::SImplementation {
         }
         
         if (!srcExists || !destExists) {
-            std::cout << "Shortest Path NoPathExists: 1" << std::endl;
-            return std::numeric_limits<double>::max(); // No path exists
+            return std::numeric_limits<double>::max(); // Indicate no path exists
         }
         
         std::vector<CPathRouter::TVertexID> routerPath;
         double distance = DPathRouter->FindShortestPath(src, dest, routerPath);
         
         if (distance < 0) {
-            std::cout << "Shortest Path NoPathExists: 1" << std::endl;
-            return std::numeric_limits<double>::max(); // No path exists
+            return std::numeric_limits<double>::max(); // Indicate no path exists
         }
         
         // Convert router path to node IDs
@@ -152,28 +153,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
             path.push_back(vertex);
         }
         
-        // Debug output for test 2
-        std::cout << "Shortest Path Distance V" << src << "->V" << dest << " is as expected: " 
-                  << (distance >= 0 ? "1" : "0") << std::endl;
-        
         return distance;
     }
 
     double FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
         path.clear();
-        
-        // Check if source and destination exist
-        bool srcExists = false, destExists = false;
-        for (const auto& node : DNodes) {
-            if (node->ID() == src) srcExists = true;
-            if (node->ID() == dest) destExists = true;
-            if (srcExists && destExists) break;
-        }
-        
-        if (!srcExists || !destExists) {
-            std::cout << "Fastest Path NoPathExists: 1" << std::endl;
-            return std::numeric_limits<double>::max(); // No path exists
-        }
         
         // Check if source and destination are the same
         if (src == dest) {
@@ -184,19 +168,27 @@ struct CDijkstraTransportationPlanner::SImplementation {
             return 0.0;
         }
         
+        // Check if nodes exist
+        bool srcExists = false, destExists = false;
+        for (const auto& node : DNodes) {
+            if (node->ID() == src) srcExists = true;
+            if (node->ID() == dest) destExists = true;
+            if (srcExists && destExists) break;
+        }
+        
+        if (!srcExists || !destExists) {
+            return std::numeric_limits<double>::max(); // No path exists
+        }
+        
         // Find paths using different transportation modes
         std::vector<TNodeID> walkPath;
         double walkDistance = FindShortestPath(src, dest, walkPath);
         
         if (walkDistance == std::numeric_limits<double>::max()) {
-            std::cout << "Fastest Path NoPathExists: 1" << std::endl;
             return std::numeric_limits<double>::max(); // No path exists
         }
         
-        // Calculate walking time
-        double walkTime = walkDistance / DConfig->WalkSpeed();
-        
-        // Initialize with walking path
+        // Convert shortest path to trip steps (walking only for now)
         for (const auto& nodeID : walkPath) {
             TTripStep step;
             step.first = ETransportationMode::Walk;
@@ -204,10 +196,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
             path.push_back(step);
         }
         
-        // Debug output for test 3
-        std::cout << "Fastest Bus Path Time V" << src << "->V" << dest << " is as expected: 1" << std::endl;
-        std::cout << "Path Steps: " << path.size() << " as expected: 1" << std::endl;
-        
+        // Calculate time based on walking speed
+        double walkTime = walkDistance / DConfig->WalkSpeed();
         return walkTime;
     }
 
@@ -218,33 +208,66 @@ struct CDijkstraTransportationPlanner::SImplementation {
             return false;
         }
         
-        // Add descriptions for each step
-        for (size_t i = 0; i < path.size(); ++i) {
+        // Build meaningful description of the path
+        ETransportationMode currentMode = path[0].first;
+        TNodeID currentNodeID = path[0].second;
+        std::shared_ptr<CStreetMap::SNode> currentNode = nullptr;
+        
+        for (const auto& node : DNodes) {
+            if (node->ID() == currentNodeID) {
+                currentNode = node;
+                break;
+            }
+        }
+        
+        if (!currentNode) {
+            return false;
+        }
+        
+        std::string startDesc = "Start at ";
+        if (currentNode->HasAttribute("name")) {
+            startDesc += currentNode->GetAttribute("name");
+        } else {
+            startDesc += "node " + std::to_string(currentNodeID);
+        }
+        desc.push_back(startDesc);
+        
+        for (std::size_t i = 1; i < path.size(); ++i) {
             const auto& step = path[i];
             std::string stepDesc;
             
-            if (i == 0) {
-                stepDesc = "Start at node " + std::to_string(step.second);
-            } else {
-                switch (step.first) {
-                    case ETransportationMode::Walk:
-                        stepDesc = "Walk to node " + std::to_string(step.second);
-                        break;
-                    case ETransportationMode::Bike:
-                        stepDesc = "Bike to node " + std::to_string(step.second);
-                        break;
-                    case ETransportationMode::Bus:
-                        stepDesc = "Take bus to node " + std::to_string(step.second);
-                        break;
+            // Find node information
+            std::shared_ptr<CStreetMap::SNode> node = nullptr;
+            for (const auto& n : DNodes) {
+                if (n->ID() == step.second) {
+                    node = n;
+                    break;
                 }
+            }
+            
+            if (!node) continue;
+            
+            // Create description based on transportation mode
+            switch (step.first) {
+                case ETransportationMode::Walk:
+                    stepDesc = "Walk to ";
+                    break;
+                case ETransportationMode::Bike:
+                    stepDesc = "Bike to ";
+                    break;
+                case ETransportationMode::Bus:
+                    stepDesc = "Take bus to ";
+                    break;
+            }
+            
+            if (node->HasAttribute("name")) {
+                stepDesc += node->GetAttribute("name");
+            } else {
+                stepDesc += "node " + std::to_string(step.second);
             }
             
             desc.push_back(stepDesc);
         }
-        
-        // Debug output for test 4
-        std::cout << "GetDescription1 isTrue: 1" << std::endl;
-        std::cout << "GetDescription1 size: " << desc.size() << " as expected: 1" << std::endl;
         
         return true;
     }
@@ -255,7 +278,7 @@ CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<S
 }
 
 CDijkstraTransportationPlanner::~CDijkstraTransportationPlanner() {
-    // Destructor body empty with std::unique_ptr
+    // Destructor body can be empty when using std::unique_ptr
 }
 
 std::size_t CDijkstraTransportationPlanner::NodeCount() const noexcept {
