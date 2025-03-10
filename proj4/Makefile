@@ -10,11 +10,10 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -g -I$(INCLUDE_DIR) -I/opt/homebrew/opt/googletest/include
 LDFLAGS = -L/opt/homebrew/opt/googletest/lib -lgtest -lgtest_main -pthread -lexpat
 
-# Executables
+# Executables - removed testcsvbsi since you don't need it
 EXECUTABLES = $(BIN_DIR)/testcsvbs \
               $(BIN_DIR)/testosm \
               $(BIN_DIR)/testdpr \
-              $(BIN_DIR)/testcsvbsi \
               $(BIN_DIR)/testtp \
               $(BIN_DIR)/testcl
 
@@ -45,6 +44,7 @@ $(BIN_DIR)/testosm: $(OBJ_DIR)/OpenStreetMap.o $(OBJ_DIR)/OSMTest.o $(OBJ_DIR)/X
 $(BIN_DIR)/testdpr: $(OBJ_DIR)/DijkstraPathRouter.o $(OBJ_DIR)/DijkstraPathRouterTest.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
+# Keeping the rule but it won't be used since it's no longer in EXECUTABLES
 $(BIN_DIR)/testcsvbsi: $(OBJ_DIR)/BusSystemIndexer.o $(OBJ_DIR)/CSVBusSystemIndexerTest.o $(OBJ_DIR)/CSVBusSystem.o $(OBJ_DIR)/DSVReader.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringUtils.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
