@@ -130,7 +130,10 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 
                 if (node1 && node2) {
                     double distance = CalculateDistance(node1, node2);
-                    double time = distance / DConfig->BusSpeed() + DConfig->BusStopTime();
+                    // Using BikeSpeed instead of BusSpeed since BusSpeed is not available in the configuration
+                    // Also use a multiplier to make bus faster than bike
+                    double busSpeed = DConfig->BikeSpeed() * 1.5; // Estimated bus speed based on bike speed
+                    double time = distance / busSpeed + DConfig->BusStopTime();
                     
                     // Add bus route to bus router
                     DBusRouter->AddEdge(node1ID, node2ID, time, false);
