@@ -152,10 +152,6 @@ if (routesrc) {
         DImplementation->RoutesByIndex.push_back(route);  
     }
 }
-    
-    // Debug output
-    std::cerr << "Loaded " << DImplementation->StopsByIndex.size() << " stops and " 
-              << DImplementation->RoutesByIndex.size() << " routes" << std::endl;
 }
 
 // destructor
