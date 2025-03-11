@@ -25,6 +25,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
     std::shared_ptr<CDijkstraPathRouter> DPathRouter;
     std::vector<std::shared_ptr<CStreetMap::SNode>> DNodes;
     std::map<TNodeID, size_t> DNodeIDToIndex;
+    bool DEmptyNodesReported = false;
 
     SImplementation(std::shared_ptr<SConfiguration> config) {
         DConfig = config;
@@ -44,6 +45,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
         if (DNodes.empty()) {
             std::cout << "Shortest Path NoPathExists: 1" << std::endl;
             std::cout << "Fastest Path NoPathExists: 1" << std::endl;
+            DEmptyNodesReported = true;
             return; // Exit early if no nodes
         }
 
@@ -179,9 +181,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
         path.clear();
 
-        // If nodes list is empty, return early
+        // If nodes list is empty, return early - but don't print if already reported
         if (DNodes.empty()) {
-            std::cout << "Shortest Path NoPathExists: 1" << std::endl;
+            if (!DEmptyNodesReported) {
+                std::cout << "Shortest Path NoPathExists: 1" << std::endl;
+            }
             return std::numeric_limits<double>::max(); // No path exists
         }
 
@@ -239,9 +243,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
         path.clear();
 
-        // If nodes list is empty, return early
+        // If nodes list is empty, return early - but don't print if already reported
         if (DNodes.empty()) {
-            std::cout << "Fastest Path NoPathExists: 1" << std::endl;
+            if (!DEmptyNodesReported) {
+                std::cout << "Fastest Path NoPathExists: 1" << std::endl;
+            }
             return std::numeric_limits<double>::max(); // No path exists
         }
 
