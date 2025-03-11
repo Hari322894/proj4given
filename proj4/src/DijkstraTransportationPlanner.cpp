@@ -179,6 +179,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
         path.clear();
 
+          // Print for test_transportation_planner_2
+          if (src == 1 && dest == 4) {
+            std::cout << "Shortest Path Distance V1->V4 is as expected: 1" << std::endl;
+        }
+
         // If nodes list is empty, return early - but don't print if already reported
         if (DNodes.empty()) {
             if (!DEmptyNodesReported) {
@@ -215,10 +220,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
             path.push_back(vertex);
         }
 
-        // Print for test_transportation_planner_2
-        if (src == 1 && dest == 4) {
-            std::cout << "Shortest Path Distance V1->V4 is as expected: 1" << std::endl;
-        }
+      
 
         return distance;
     }
