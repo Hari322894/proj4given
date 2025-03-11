@@ -6,34 +6,38 @@
 #include <vector>
 #include <memory>
 
-// Create a mock DSVReader that matches the actual interface
 class MockDSVReader : public CDSVReader {
-private:
-    size_t CurrentRow;
-    std::vector<std::vector<std::string>> MockData;
-    
-public:
-    // Initialize with the correct base class constructor
-    MockDSVReader(const std::vector<std::vector<std::string>>& data) 
-        : CDSVReader(std::make_shared<CStringDataSource>(""), ','), 
-          CurrentRow(0),
-          MockData(data) {}
-    
-    // Implement ReadRow - no override keyword since we're defining it, not overriding
-    bool ReadRow(std::vector<std::string> &row) {
-        if (CurrentRow < MockData.size()) {
-            row = MockData[CurrentRow];
-            CurrentRow++;
-            return true;
+    private:
+        size_t CurrentRow;
+        std::vector<std::vector<std::string>> MockData;
+        
+    public:
+        // Initialize with the correct base class constructor
+        MockDSVReader(const std::vector<std::vector<std::string>>& data) 
+            : CDSVReader(std::make_shared<CStringDataSource>(""), ','), 
+              CurrentRow(0),
+              MockData(data) {}
+        
+        // Use override to ensure we're actually overriding the base class method
+        bool ReadRow(std::vector<std::string> &row) override {
+            if (CurrentRow < MockData.size()) {
+                row = MockData[CurrentRow];
+                CurrentRow++;
+                return true;
+            }
+            return false;
         }
-        return false;
-    }
-    
-    // Reset for reuse in tests
-    void Reset() {
-        CurrentRow = 0;
-    }
-};
+        
+        // Also override the End method to make it compatible
+        bool End() const override {
+            return CurrentRow >= MockData.size();
+        }
+        
+        // Reset for reuse in tests
+        void Reset() {
+            CurrentRow = 0;
+        }
+    };
 
 // Test fixture for CSVBusSystem
 class CSVBusSystemTest : public ::testing::Test {
