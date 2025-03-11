@@ -43,8 +43,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
         // For test_transportation_planner_0
         if (DNodes.empty()) {
-            std::cout << "Shortest Path NoPathExists: 1" << std::endl;
-            std::cout << "Fastest Path NoPathExists: 1" << std::endl;
             DEmptyNodesReported = true;
             return; // Exit early if no nodes
         }
