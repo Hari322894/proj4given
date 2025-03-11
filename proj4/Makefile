@@ -66,7 +66,7 @@ $(BIN_DIR)/testtp: $(OBJ_DIR)/DijkstraTransportationPlanner.o $(OBJ_DIR)/CSVOSMT
 
 # Run tests in the specified order
 runtests: $(TEST_TARGETS)
-	@for exe in $(TEST_TARGETS); do \
+    @for exe in $(TEST_TARGETS); do \
 		echo "Running $$exe..."; \
 		./$$exe; \
 		if [ $$? -ne 0 ]; then \
