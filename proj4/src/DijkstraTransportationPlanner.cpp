@@ -184,6 +184,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
             std::cout << "Shortest Path Distance V1->V4 is as expected: 1" << std::endl;
         }
 
+        return DImplementation->FindShortestPath(src, dest, path);
+
         // If nodes list is empty, return early - but don't print if already reported
         if (DNodes.empty()) {
             if (!DEmptyNodesReported) {
