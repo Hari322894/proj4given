@@ -69,10 +69,14 @@ CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_pt
     DImplementation = std::make_unique<SImplementation>();
     
     //read stops data
-    if (stopsrc) {
-        // tmp storage for row data
-        std::vector<std::string> stopRow;
-        //read each row of the stop file with a while loop
+if (stopsrc) {
+    // tmp storage for row data
+    std::vector<std::string> stopRow;
+    
+    // Skip header row first
+    if (stopsrc->ReadRow(stopRow)) {
+        // Now read actual data rows
+        stopRow.clear();
         while (stopsrc->ReadRow(stopRow)) {
             // ensure sufficient columns exists
             if (stopRow.size() >= 2) {  
@@ -93,15 +97,22 @@ CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_pt
             }
         }
     }
+}
+    
 
-    // read routes data
-    if (routesrc) {
-        // tmp storage for row data
-        std::vector<std::string> routeRow;
-        // tmp storage for routes by name
-        std::unordered_map<std::string, std::shared_ptr<SRoute>> tempRoutes;
-        
-        // read each row of the route file
+   // read routes data
+if (routesrc) {
+    // tmp storage for row data
+    std::vector<std::string> routeRow;
+    // tmp storage for routes by name
+    std::unordered_map<std::string, std::shared_ptr<SRoute>> tempRoutes;
+    // To preserve the order of first encounter of each route
+    std::vector<std::string> routeOrder;
+    
+    // Skip header row first
+    if (routesrc->ReadRow(routeRow)) {
+        // Now read actual data rows
+        routeRow.clear();
         while (routesrc->ReadRow(routeRow)) {  
             // ensure sufficient columns exist
             if (routeRow.size() >= 2) {  
@@ -119,25 +130,28 @@ CCSVBusSystem::CCSVBusSystem(std::shared_ptr<CDSVReader> stopsrc, std::shared_pt
                         newRoute->RouteName = routeName;
                         newRoute->RouteStops.push_back(stopID);
                         tempRoutes[routeName] = newRoute;
+                        // Track the order of first encounter
+                        routeOrder.push_back(routeName);
                     } else {
                         // Add stop to existing route
                         routeIt->second->RouteStops.push_back(stopID);
                     }
                 } catch (const std::exception& e) {
-                    //handle error by 
                     std::cerr << "Exception in route parsing: " << e.what() << "\n";
                 }
             }
         }
-
-        // Transfer routes from temporary map to implementation
-        for (const auto& pair : tempRoutes) {
-            // store in route map
-            DImplementation->Routes[pair.first] = pair.second; 
-            // store in index list 
-            DImplementation->RoutesByIndex.push_back(pair.second);  
-        }
     }
+
+    // Transfer routes from temporary map to implementation using the preserved order
+    for (const auto& routeName : routeOrder) {
+        auto route = tempRoutes[routeName];
+        // store in route map
+        DImplementation->Routes[routeName] = route; 
+        // store in index list 
+        DImplementation->RoutesByIndex.push_back(route);  
+    }
+}
     
     // Debug output
     std::cerr << "Loaded " << DImplementation->StopsByIndex.size() << " stops and " 
