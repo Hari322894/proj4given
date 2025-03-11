@@ -177,6 +177,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
         path.clear();
 
+        // If nodes list is empty, return early
+    if (DNodes.empty()) {
+        return std::numeric_limits<double>::max(); // No path exists
+    }
+
         // Check if nodes exist
         auto srcIter = DNodeIDToIndex.find(src);
         auto destIter = DNodeIDToIndex.find(dest);
@@ -230,6 +235,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
     // Find fastest path considering walking and buses
     double FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
         path.clear();
+
+        // If nodes list is empty, return early
+    if (DNodes.empty()) {
+        return std::numeric_limits<double>::max(); // No path exists
+    }
 
         // Check if nodes exist
         auto srcIter = DNodeIDToIndex.find(src);
