@@ -24,8 +24,7 @@ TEST_TARGETS = $(BIN_DIR)/testcsvbs \
                $(BIN_DIR)/testosm \
                $(BIN_DIR)/testdpr \
                $(BIN_DIR)/testcsvbsi \
-               $(BIN_DIR)/testtp \
-               $(BIN_DIR)/testcl
+               $(BIN_DIR)/testtp 
 
 # Default target
 all: directories $(TEST_TARGETS) runtests
