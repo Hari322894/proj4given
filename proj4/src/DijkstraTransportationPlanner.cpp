@@ -56,11 +56,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 return CStreetMap::TLocation(); 
             }
             
-            std::vector<std::shared_ptr<CStreetMap::SWay>> Ways() const noexcept override {
-                return {};
-            }
-            
-            // Additional methods required by SNode
+            // Only implement methods that are in the base class
             std::size_t AttributeCount() const noexcept override { return 0; }
             std::string GetAttributeKey(std::size_t) const noexcept override { return ""; }
             bool HasAttribute(const std::string &) const noexcept override { return false; }
