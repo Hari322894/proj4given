@@ -1,5 +1,6 @@
 #include "DijkstraTransportationPlanner.h"
 #include "DijkstraPathRouter.h"
+#include "GeographicUtils.h"
 #include <limits>
 #include <algorithm>
 #include <unordered_map>
@@ -12,11 +13,6 @@
 // Define missing types if needed
 using TBusID = std::size_t;
 using TStopID = std::size_t;
-
-// Define M_PI if not defined
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 struct CDijkstraTransportationPlanner::SImplementation {
     std::shared_ptr<SConfiguration> DConfig;
@@ -66,55 +62,58 @@ struct CDijkstraTransportationPlanner::SImplementation {
         // Initialize path router
         DPathRouter = std::make_shared<CDijkstraPathRouter>();
 
-        // Store all nodes for quick lookup
-        for (std::size_t i = 0; i < DStreetMap->NodeCount(); ++i) {
-            auto node = DStreetMap->NodeByIndex(i);
-            if (node) {
-                DNodes.push_back(node);
+        if (DStreetMap) {
+            // Store all nodes for quick lookup
+            for (std::size_t i = 0; i < DStreetMap->NodeCount(); ++i) {
+                auto node = DStreetMap->NodeByIndex(i);
+                if (node) {
+                    DNodes.push_back(node);
+                }
             }
-        }
 
-        // Sort nodes by ID for consistent indexing
-        std::sort(DNodes.begin(), DNodes.end(), [](const auto &a, const auto &b) { 
-            return a->ID() < b->ID(); 
-        });
+            // Sort nodes by ID for consistent indexing
+            std::sort(DNodes.begin(), DNodes.end(), [](const auto &a, const auto &b) { 
+                return a->ID() < b->ID(); 
+            });
 
-        // Create node ID to index mapping for quick lookups
-        for (std::size_t i = 0; i < DNodes.size(); ++i) {
-            DNodeIDToIndex[DNodes[i]->ID()] = i;
-        }
+            // Create node ID to index mapping for quick lookups
+            for (std::size_t i = 0; i < DNodes.size(); ++i) {
+                DNodeIDToIndex[DNodes[i]->ID()] = i;
+            }
 
-        // Add vertices to the path router
-        for (const auto &node : DNodes) {
-            DPathRouter->AddVertex(node->ID());
-        }
+            // Add vertices to the path router
+            for (const auto &node : DNodes) {
+                DPathRouter->AddVertex(node->ID());
+            }
 
-        // Add street edges
-        for (std::size_t i = 0; i < DStreetMap->WayCount(); ++i) {
-            auto way = DStreetMap->WayByIndex(i);
-            if (!way || way->NodeCount() < 2)
-                continue;
-
-            for (std::size_t j = 1; j < way->NodeCount(); ++j) {
-                auto node1ID = way->GetNodeID(j - 1);
-                auto node2ID = way->GetNodeID(j);
-
-                // Find the nodes by ID
-                auto node1Iter = DNodeIDToIndex.find(node1ID);
-                auto node2Iter = DNodeIDToIndex.find(node2ID);
-                
-                if (node1Iter == DNodeIDToIndex.end() || node2Iter == DNodeIDToIndex.end())
+            // Add street edges
+            for (std::size_t i = 0; i < DStreetMap->WayCount(); ++i) {
+                auto way = DStreetMap->WayByIndex(i);
+                if (!way || way->NodeCount() < 2)
                     continue;
-                
-                std::shared_ptr<CStreetMap::SNode> node1 = DNodes[node1Iter->second];
-                std::shared_ptr<CStreetMap::SNode> node2 = DNodes[node2Iter->second];
 
-                double distance = CalculateDistance(node1, node2);
-                DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
+                for (std::size_t j = 1; j < way->NodeCount(); ++j) {
+                    auto node1ID = way->GetNodeID(j - 1);
+                    auto node2ID = way->GetNodeID(j);
 
-                // Add edge in reverse if way is bidirectional
-                if (!way->HasAttribute("oneway") || way->GetAttribute("oneway") != "yes") {
-                    DPathRouter->AddEdge(node2->ID(), node1->ID(), distance, false);
+                    // Find the nodes by ID
+                    auto node1Iter = DNodeIDToIndex.find(node1ID);
+                    auto node2Iter = DNodeIDToIndex.find(node2ID);
+                    
+                    if (node1Iter == DNodeIDToIndex.end() || node2Iter == DNodeIDToIndex.end())
+                        continue;
+                    
+                    std::shared_ptr<CStreetMap::SNode> node1 = DNodes[node1Iter->second];
+                    std::shared_ptr<CStreetMap::SNode> node2 = DNodes[node2Iter->second];
+
+                    // Use GeographicUtils to calculate distance in miles
+                    double distance = SGeographicUtils::HaversineDistanceInMiles(node1->Location(), node2->Location());
+                    DPathRouter->AddEdge(node1->ID(), node2->ID(), distance, false);
+
+                    // Add edge in reverse if way is bidirectional
+                    if (!way->HasAttribute("oneway") || way->GetAttribute("oneway") != "yes") {
+                        DPathRouter->AddEdge(node2->ID(), node1->ID(), distance, false);
+                    }
                 }
             }
         }
@@ -123,25 +122,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
         if (IsTest1Environment()) {
             PrintTest1Output();
         }
-    }
-
-    double CalculateDistance(std::shared_ptr<CStreetMap::SNode> node1, std::shared_ptr<CStreetMap::SNode> node2) const {
-        // Haversine formula for calculating distance between two lat/lon points
-        const double EarthRadiusKm = 6371.0;
-        const double DegreesToRadians = M_PI / 180.0;
-
-        double lat1 = node1->Location().first * DegreesToRadians;
-        double lon1 = node1->Location().second * DegreesToRadians;
-        double lat2 = node2->Location().first * DegreesToRadians;
-        double lon2 = node2->Location().second * DegreesToRadians;
-
-        double dlon = lon2 - lon1;
-        double dlat = lat2 - lat1;
-
-        double a = sin(dlat / 2) * sin(dlat / 2) + cos(lat1) * cos(lat2) * sin(dlon / 2) * sin(dlon / 2);
-        double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-
-        return EarthRadiusKm * c;
     }
 
     std::size_t NodeCount() const noexcept {
