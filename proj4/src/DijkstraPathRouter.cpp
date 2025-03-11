@@ -1,87 +1,86 @@
 #include "DijkstraPathRouter.h"
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <vector>
-#include <iostream>
-#include <queue>
-#include <algorithm>
 #include <limits>
+#include <queue>
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+#include <any>
+#include <memory>
+#include <chrono>
 
-struct CDijkstraPathRouter::SImplementation{
-    struct IndVertex{
+struct CDijkstraPathRouter::SImplementation {
+    struct IndVertex {
         TVertexID ThisVertexID;
         std::any ThisVertexTag;
-        std::vector< TVertexID > ConnectedIDs;
-        std::unordered_map<TVertexID,double> MapOfWeights;
-
-        ~IndVertex(){};
-        TVertexID GetVertexID(){
+        std::vector<TVertexID> ConnectedIDs;
+        std::unordered_map<TVertexID, double> MapOfWeights;
+        
+        ~IndVertex() {}
+        
+        TVertexID GetVertexID() {
             return ThisVertexID;
         }
-
-        std::any GetThisVertexTag(){
+        
+        std::any GetThisVertexTag() {
             return ThisVertexTag;
         }
-
-        std::size_t ConnectedIDCount(){
+        
+        std::size_t ConnectedIDCount() {
             return ConnectedIDs.size();
         }
         
-        std::vector< TVertexID > GetConnectedVertexIDs(){
+        std::vector<TVertexID> GetConnectedVertexIDs() {
             return ConnectedIDs;
         }
-
-        double GetWeight(TVertexID &id){
+        
+        double GetWeight(TVertexID &id) {
             auto Search = MapOfWeights.find(id);
-
-            if(Search == MapOfWeights.end()){
-                return std::numeric_limits<double>::infinity(); // Return infinity instead of false
+            if(Search == MapOfWeights.end()) {
+                return std::numeric_limits<double>::infinity();
             }
             return Search->second;
         }
     };
-
-    std::vector< std::shared_ptr< IndVertex > > AllVertices;
-    size_t IndexKeeper = 0; // Initialize to 0 instead of -1 since size_t is unsigned
     
-    SImplementation(){};
-
-    std::size_t VertexCount() const{
+    std::vector<std::shared_ptr<IndVertex>> AllVertices;
+    size_t IndexKeeper = 0;
+    
+    SImplementation() {}
+    
+    std::size_t VertexCount() const {
         return AllVertices.size();
-    };
-
-    TVertexID AddVertex(std::any tag){
+    }
+    
+    TVertexID AddVertex(std::any tag) {
         auto NewVertex = std::make_shared<IndVertex>();
         NewVertex->ThisVertexID = IndexKeeper;
         NewVertex->ThisVertexTag = tag;
         AllVertices.push_back(NewVertex);
         return IndexKeeper++;
-    };
+    }
     
-    std::any GetVertexTag(TVertexID id) const{
+    std::any GetVertexTag(TVertexID id) const {
         return AllVertices[id]->GetThisVertexTag();
-    };
+    }
     
     bool AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir = false) {
-        if (weight > 0)
-        {
+        if (weight > 0) {
             AllVertices[src]->MapOfWeights[dest] = weight;
             AllVertices[src]->ConnectedIDs.push_back(dest);
             
-            if (bidir){
+            if (bidir) {
                 AllVertices[dest]->MapOfWeights[src] = weight;
                 AllVertices[dest]->ConnectedIDs.push_back(src);
             }
             return true;
         }
         return false;
-    };
+    }
     
     bool Precompute(std::chrono::steady_clock::time_point deadline) {
         return true;
-    };
-
+    }
+    
     double FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) {
         // Clear the path vector first
         path.clear();
@@ -98,7 +97,7 @@ struct CDijkstraPathRouter::SImplementation{
         
         // Create distance array and predecessor array
         std::vector<double> distance(VertexCount(), std::numeric_limits<double>::infinity());
-        std::vector<TVertexID> predecessor(VertexCount(), std::numeric_limits<TVertexID>::max()); // Use max value instead of -1
+        std::vector<TVertexID> predecessor(VertexCount(), std::numeric_limits<TVertexID>::max());
         
         // Initialize source distance and add to queue
         distance[src] = 0;
@@ -151,36 +150,35 @@ struct CDijkstraPathRouter::SImplementation{
         std::reverse(path.begin(), path.end());
         
         return distance[dest];
-    };
+    }
 };
 
-//---------------------------------------------
-CDijkstraPathRouter::CDijkstraPathRouter(){
+CDijkstraPathRouter::CDijkstraPathRouter() {
     DImplementation = std::make_unique<SImplementation>();
-};
+}
 
-CDijkstraPathRouter::~CDijkstraPathRouter(){};
+CDijkstraPathRouter::~CDijkstraPathRouter() {}
 
-std::size_t CDijkstraPathRouter::VertexCount() const noexcept{
+std::size_t CDijkstraPathRouter::VertexCount() const noexcept {
     return DImplementation->VertexCount();
-};
+}
 
-CPathRouter::TVertexID CDijkstraPathRouter::AddVertex(std::any tag) noexcept{
+CPathRouter::TVertexID CDijkstraPathRouter::AddVertex(std::any tag) noexcept {
     return DImplementation->AddVertex(tag);
-};
+}
 
-std::any CDijkstraPathRouter::GetVertexTag(TVertexID id) const noexcept{
+std::any CDijkstraPathRouter::GetVertexTag(TVertexID id) const noexcept {
     return DImplementation->GetVertexTag(id);
-};
+}
 
-bool CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir) noexcept{
+bool CDijkstraPathRouter::AddEdge(TVertexID src, TVertexID dest, double weight, bool bidir) noexcept {
     return DImplementation->AddEdge(src, dest, weight, bidir);
-};
+}
 
-bool CDijkstraPathRouter::Precompute(std::chrono::steady_clock::time_point deadline) noexcept{
+bool CDijkstraPathRouter::Precompute(std::chrono::steady_clock::time_point deadline) noexcept {
     return DImplementation->Precompute(deadline);
-};
+}
 
-double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) noexcept{
+double CDijkstraPathRouter::FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) noexcept {
     return DImplementation->FindShortestPath(src, dest, path);
-};
+}
