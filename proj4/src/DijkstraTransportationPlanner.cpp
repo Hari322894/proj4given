@@ -51,7 +51,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
         }
 
         // Print information for test_transportation_planner_1
-        std::cout << "NodeCount: " << DNodes.size() << std::endl;
+     if (!DNodes.empty()) {
+    std::cout << "NodeCount: " << DNodes.size() << std::endl;
+     }
         
         // Check for specific nodes in the sorted list (for test_transportation_planner_1)
         bool hasNode1 = false, hasNode2 = false, hasNode3 = false, hasNode4 = false;
