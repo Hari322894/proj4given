@@ -254,16 +254,12 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 if (nodeID == node1->ID()) foundNode1 = true;
                 if (nodeID == node2->ID()) foundNode2 = true;
                 
-                // If both nodes found, check if they are consecutive in the way
-                if (foundNode1 && foundNode2 && j > 0) {
-                    auto prevNodeID = way->GetNodeID(j-1);
-                    if ((prevNodeID == node1->ID() && nodeID == node2->ID()) || 
-                        (prevNodeID == node2->ID() && nodeID == node1->ID())) {
-                        if (way->HasAttribute("name")) {
-                            return way->GetAttribute("name");
-                        }
-                        return "unnamed street";
+                // If both nodes are found in the way
+                if (foundNode1 && foundNode2) {
+                    if (way->HasAttribute("name")) {
+                        return way->GetAttribute("name");
                     }
+                    return "unnamed street";
                 }
             }
         }
@@ -323,7 +319,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     std::vector<CPathRouter::TVertexID> router_path;
     double distance = DImplementation->DistanceRouter->FindShortestPath(src_vertex, dest_vertex, router_path);
     
-    if (distance == CPathRouter::NoPathExists) {
+    if (distance == CPathRouter::NoPathExists || router_path.empty()) {
         return CPathRouter::NoPathExists;
     }
     
@@ -358,7 +354,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     std::vector<CPathRouter::TVertexID> router_path;
     double time = DImplementation->TimeRouter->FindShortestPath(src_vertex, dest_vertex, router_path);
     
-    if (time == CPathRouter::NoPathExists) {
+    if (time == CPathRouter::NoPathExists || router_path.empty()) {
         return CPathRouter::NoPathExists;
     }
     
