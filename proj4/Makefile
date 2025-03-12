@@ -8,8 +8,7 @@ BIN_DIR = bin
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -g -I$(INCLUDE_DIR)
-# Changed order of flags - gtest_main must come before gtest
-LDFLAGS = -lgtest_main -lgtest -pthread -lexpat
+LDFLAGS = -lgtest -lgtest_main -pthread -lexpat
 
 # Source files
 SRC_FILES = $(wildcard $(SRC_DIR)/*.cpp)
@@ -57,7 +56,7 @@ $(BIN_DIR)/testdpr: $(OBJ_DIR)/DijkstraPathRouter.o $(OBJ_DIR)/DijkstraPathRoute
 $(BIN_DIR)/testcsvbsi: $(OBJ_DIR)/BusSystemIndexer.o $(OBJ_DIR)/CSVBusSystemIndexerTest.o $(OBJ_DIR)/CSVBusSystem.o $(OBJ_DIR)/DSVReader.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringUtils.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
-$(BIN_DIR)/testtp: $(OBJ_DIR)/DijkstraTransportationPlanner.o $(OBJ_DIR)/CSVOSMTransportationPlannerTest.o $(OBJ_DIR)/DijkstraPathRouter.o $(OBJ_DIR)/BusSystemIndexer.o $(OBJ_DIR)/CSVBusSystem.o $(OBJ_DIR)/OpenStreetMap.o $(OBJ_DIR)/XMLReader.o $(OBJ_DIR)/XMLWriter.o $(OBJ_DIR)/DSVReader.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringUtils.o $(OBJ_DIR)/GeographicUtils.o $(OBJ_DIR)/KMLWriter.o
+$(BIN_DIR)/testtp: $(OBJ_DIR)/DijkstraTransportationPlanner.o $(OBJ_DIR)/CSVOSMTransportationPlannerTest.o $(OBJ_DIR)/DijkstraPathRouter.o $(OBJ_DIR)/BusSystemIndexer.o $(OBJ_DIR)/CSVBusSystem.o $(OBJ_DIR)/OpenStreetMap.o $(OBJ_DIR)/XMLReader.o $(OBJ_DIR)/DSVReader.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringUtils.o $(OBJ_DIR)/GeographicUtils.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 $(BIN_DIR)/testcl: $(OBJ_DIR)/TransportationPlannerCommandLine.o $(OBJ_DIR)/TPCommandLineTest.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringDataSink.o
