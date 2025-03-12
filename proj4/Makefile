@@ -24,8 +24,8 @@ TEST_TARGETS = $(BIN_DIR)/testcsvbs \
                $(BIN_DIR)/testosm \
                $(BIN_DIR)/testdpr \
                $(BIN_DIR)/testcsvbsi \
-               $(BIN_DIR)/testtp\
-				$(BIN_DIR)/testcl
+               $(BIN_DIR)/testtp \
+               $(BIN_DIR)/testcl
 
 # Default target
 all: directories $(TEST_TARGETS) runtests
@@ -47,7 +47,7 @@ $(OBJ_DIR)/%.o: $(TEST_SRC_DIR)/%.cpp
 $(BIN_DIR)/testcsvbs: $(OBJ_DIR)/CSVBusSystem.o $(OBJ_DIR)/CSVBusSystemTest.o $(OBJ_DIR)/DSVReader.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringUtils.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
-$(BIN_DIR)/testosm: $(OBJ_DIR)/OpenStreetMap.o $(OBJ_DIR)/OSMTest.o $(OBJ_DIR)/XMLReader.o $(OBJ_DIR)/StringDataSource.o
+$(BIN_DIR)/testosm: $(OBJ_DIR)/OpenStreetMap.o $(OBJ_OBJ_DIR)/OSMTest.o $(OBJ_DIR)/XMLReader.o $(OBJ_DIR)/StringDataSource.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 $(BIN_DIR)/testdpr: $(OBJ_DIR)/DijkstraPathRouter.o $(OBJ_DIR)/DijkstraPathRouterTest.o
@@ -61,7 +61,6 @@ $(BIN_DIR)/testtp: $(OBJ_DIR)/DijkstraTransportationPlanner.o $(OBJ_DIR)/CSVOSMT
 
 $(BIN_DIR)/testcl: $(OBJ_DIR)/TransportationPlannerCommandLine.o $(OBJ_DIR)/TPCommandLineTest.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringDataSink.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
-
 
 # Add rules for main executables if needed
 # Example:
