@@ -33,12 +33,14 @@ struct CTransportationPlannerCommandLine::SImplementation {
     
     bool ProcessCommands() {
         std::string Command, Line;
+        std::vector<char> Buffer(1024);
         
-        while(DCommandSource->Read(Line)) {
+        while(DCommandSource->Read(Buffer, 1024)) {
+            Line.assign(Buffer.begin(), Buffer.end());
             std::stringstream LineStream(Line);
             
             // Print prompt and clear command
-            DOutputSink->Write("> ");
+            DOutputSink->Write(std::vector<char>{'>', ' '});
             Command.clear();
             
             // Get the command
@@ -69,7 +71,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
                 HandlePrintCommand();
             }
             else if(!Command.empty()) {
-                DErrorSink->Write("Unknown command \"" + Command + "\" type help for help.\n");
+                DErrorSink->Write(GetVectorFromString("Unknown command \"" + Command + "\" type help for help.\n"));
             }
         }
         
@@ -77,35 +79,35 @@ struct CTransportationPlannerCommandLine::SImplementation {
     }
     
     void HandleHelpCommand() {
-        DOutputSink->Write("------------------------------------------------------------------------\n");
-        DOutputSink->Write("help     Display this help menu\n");
-        DOutputSink->Write("exit     Exit the program\n");
-        DOutputSink->Write("count    Output the number of nodes in the map\n");
-        DOutputSink->Write("node     Syntax \"node [0, count)\" \n");
-        DOutputSink->Write("         Will output node ID and Lat/Lon for node\n");
-        DOutputSink->Write("fastest  Syntax \"fastest start end\" \n");
-        DOutputSink->Write("         Calculates the time for fastest path from start to end\n");
-        DOutputSink->Write("shortest Syntax \"shortest start end\" \n");
-        DOutputSink->Write("         Calculates the distance for the shortest path from start to end\n");
-        DOutputSink->Write("save     Saves the last calculated path to file\n");
-        DOutputSink->Write("print    Prints the steps for the last calculated path\n");
+        DOutputSink->Write(GetVectorFromString("------------------------------------------------------------------------\n"));
+        DOutputSink->Write(GetVectorFromString("help     Display this help menu\n"));
+        DOutputSink->Write(GetVectorFromString("exit     Exit the program\n"));
+        DOutputSink->Write(GetVectorFromString("count    Output the number of nodes in the map\n"));
+        DOutputSink->Write(GetVectorFromString("node     Syntax \"node [0, count)\" \n"));
+        DOutputSink->Write(GetVectorFromString("         Will output node ID and Lat/Lon for node\n"));
+        DOutputSink->Write(GetVectorFromString("fastest  Syntax \"fastest start end\" \n"));
+        DOutputSink->Write(GetVectorFromString("         Calculates the time for fastest path from start to end\n"));
+        DOutputSink->Write(GetVectorFromString("shortest Syntax \"shortest start end\" \n"));
+        DOutputSink->Write(GetVectorFromString("         Calculates the distance for the shortest path from start to end\n"));
+        DOutputSink->Write(GetVectorFromString("save     Saves the last calculated path to file\n"));
+        DOutputSink->Write(GetVectorFromString("print    Prints the steps for the last calculated path\n"));
     }
     
     void HandleCountCommand() {
         size_t NodeCount = DPlanner->NodeCount();
-        DOutputSink->Write(std::to_string(NodeCount) + " nodes\n");
+        DOutputSink->Write(GetVectorFromString(std::to_string(NodeCount) + " nodes\n"));
     }
     
     void HandleNodeCommand(std::stringstream &lineStream) {
         int NodeIndex;
         
         if(!(lineStream >> NodeIndex)) {
-            DErrorSink->Write("Invalid node command, see help.\n");
+            DErrorSink->Write(GetVectorFromString("Invalid node command, see help.\n"));
             return;
         }
         
         if(NodeIndex < 0 || static_cast<size_t>(NodeIndex) >= DPlanner->NodeCount()) {
-            DErrorSink->Write("Invalid node parameter, see help.\n");
+            DErrorSink->Write(GetVectorFromString("Invalid node parameter, see help.\n"));
             return;
         }
         
@@ -131,14 +133,14 @@ struct CTransportationPlannerCommandLine::SImplementation {
                      << " is at " << std::abs(LatDegrees) << "d " << LatMinutes << "' " << LatSeconds << "\" " << LatDirection
                      << ", " << LongDegrees << "d " << LongMinutes << "' " << LongSeconds << "\" " << LongDirection << "\n";
         
-        DOutputSink->Write(OutputString.str());
+        DOutputSink->Write(GetVectorFromString(OutputString.str()));
     }
     
     void HandleShortestCommand(std::stringstream &lineStream) {
         CTransportationPlanner::TNodeID SourceID, DestinationID;
         
         if(!(lineStream >> SourceID >> DestinationID)) {
-            DErrorSink->Write("Invalid shortest command, see help.\n");
+            DErrorSink->Write(GetVectorFromString("Invalid shortest command, see help.\n"));
             return;
         }
         
@@ -147,7 +149,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
             std::stoul(std::to_string(SourceID));
             std::stoul(std::to_string(DestinationID));
         } catch(...) {
-            DErrorSink->Write("Invalid shortest parameter, see help.\n");
+            DErrorSink->Write(GetVectorFromString("Invalid shortest parameter, see help.\n"));
             return;
         }
         
@@ -160,14 +162,14 @@ struct CTransportationPlannerCommandLine::SImplementation {
         DPathDestinationID = DestinationID;
         DPathTime = Distance;
         
-        DOutputSink->Write("Shortest path is " + std::to_string(Distance) + " mi.\n");
+        DOutputSink->Write(GetVectorFromString("Shortest path is " + std::to_string(Distance) + " mi.\n"));
     }
     
     void HandleFastestCommand(std::stringstream &lineStream) {
         CTransportationPlanner::TNodeID SourceID, DestinationID;
         
         if(!(lineStream >> SourceID >> DestinationID)) {
-            DErrorSink->Write("Invalid fastest command, see help.\n");
+            DErrorSink->Write(GetVectorFromString("Invalid fastest command, see help.\n"));
             return;
         }
         
@@ -176,7 +178,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
             std::stoul(std::to_string(SourceID));
             std::stoul(std::to_string(DestinationID));
         } catch(...) {
-            DErrorSink->Write("Invalid fastest parameter, see help.\n");
+            DErrorSink->Write(GetVectorFromString("Invalid fastest parameter, see help.\n"));
             return;
         }
         
@@ -193,7 +195,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
         if(Time < 1.0) {
             // Less than an hour, show in minutes
             int Minutes = static_cast<int>(Time * 60);
-            DOutputSink->Write("Fastest path takes " + std::to_string(Minutes) + " min.\n");
+            DOutputSink->Write(GetVectorFromString("Fastest path takes " + std::to_string(Minutes) + " min.\n"));
         } else {
             // Hours, minutes, and seconds
             int Hours = static_cast<int>(Time);
@@ -212,13 +214,13 @@ struct CTransportationPlannerCommandLine::SImplementation {
             }
             
             TimeStr << ".\n";
-            DOutputSink->Write(TimeStr.str());
+            DOutputSink->Write(GetVectorFromString(TimeStr.str()));
         }
     }
     
     void HandleSaveCommand() {
         if(!DPathValid) {
-            DErrorSink->Write("No valid path to save, see help.\n");
+            DErrorSink->Write(GetVectorFromString("No valid path to save, see help.\n"));
             return;
         }
         
@@ -230,18 +232,18 @@ struct CTransportationPlannerCommandLine::SImplementation {
         auto SaveSink = DResultsFactory->CreateSink(Filename);
         
         if(!SaveSink) {
-            DErrorSink->Write("Unable to create save file.\n");
+            DErrorSink->Write(GetVectorFromString("Unable to create save file.\n"));
             return;
         }
         
         // Write header
-        SaveSink->Write("mode,node_id\n");
+        SaveSink->Write(GetVectorFromString("mode,node_id\n"));
         
         // Write data
         if(DIsShortestPath) {
             // Shortest path only has node IDs
             for(const auto &NodeID : DShortestPath) {
-                SaveSink->Write("Walk," + std::to_string(NodeID) + "\n");
+                SaveSink->Write(GetVectorFromString("Walk," + std::to_string(NodeID) + "\n"));
             }
         } else {
             // Fastest path has mode and node ID
@@ -260,35 +262,39 @@ struct CTransportationPlannerCommandLine::SImplementation {
                         break;
                 }
                 
-                SaveSink->Write(Mode + "," + std::to_string(Step.second) + 
-                               ((&Step != &DFastestPath.back()) ? "\n" : ""));
+                SaveSink->Write(GetVectorFromString(Mode + "," + std::to_string(Step.second) +
+                               ((&Step != &DFastestPath.back()) ? "\n" : "")));
             }
         }
         
-        DOutputSink->Write("Path saved to <results>/" + Filename + "\n");
+        DOutputSink->Write(GetVectorFromString("Path saved to <results>/" + Filename + "\n"));
     }
     
     void HandlePrintCommand() {
         if(!DPathValid) {
-            DErrorSink->Write("No valid path to print, see help.\n");
+            DErrorSink->Write(GetVectorFromString("No valid path to print, see help.\n"));
             return;
         }
         
         if(DIsShortestPath) {
             // For shortest path, we don't have detailed steps
-            DOutputSink->Write("Shortest path is " + std::to_string(DPathTime) + " mi.\n");
+            DOutputSink->Write(GetVectorFromString("Shortest path is " + std::to_string(DPathTime) + " mi.\n"));
         } else {
             // For fastest path, get the description
             std::vector<std::string> PathDescription;
             
             if(DPlanner->GetPathDescription(DFastestPath, PathDescription)) {
                 for(const auto &Line : PathDescription) {
-                    DOutputSink->Write(Line + "\n");
+                    DOutputSink->Write(GetVectorFromString(Line + "\n"));
                 }
             } else {
-                DErrorSink->Write("Unable to get path description.\n");
+                DErrorSink->Write(GetVectorFromString("Unable to get path description.\n"));
             }
         }
+    }
+
+    std::vector<char> GetVectorFromString(const std::string &str) {
+        return std::vector<char>(str.begin(), str.end());
     }
 };
 
