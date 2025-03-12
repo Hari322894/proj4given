@@ -24,7 +24,8 @@ TEST_TARGETS = $(BIN_DIR)/testcsvbs \
                $(BIN_DIR)/testosm \
                $(BIN_DIR)/testdpr \
                $(BIN_DIR)/testcsvbsi \
-               $(BIN_DIR)/testtp 
+               $(BIN_DIR)/testtp\
+				$(BIN_DIR)/testcl
 
 # Default target
 all: directories $(TEST_TARGETS) runtests
@@ -56,6 +57,9 @@ $(BIN_DIR)/testcsvbsi: $(OBJ_DIR)/BusSystemIndexer.o $(OBJ_DIR)/CSVBusSystemInde
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 $(BIN_DIR)/testtp: $(OBJ_DIR)/DijkstraTransportationPlanner.o $(OBJ_DIR)/CSVOSMTransportationPlannerTest.o $(OBJ_DIR)/DijkstraPathRouter.o $(OBJ_DIR)/BusSystemIndexer.o $(OBJ_DIR)/CSVBusSystem.o $(OBJ_DIR)/OpenStreetMap.o $(OBJ_DIR)/XMLReader.o $(OBJ_DIR)/DSVReader.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringUtils.o $(OBJ_DIR)/GeographicUtils.o
+	$(CXX) $^ -o $@ $(LDFLAGS)
+
+$(BIN_DIR)/testcl: $(OBJ_DIR)/TransportationPlannerCommandLine.o $(OBJ_DIR)/TPCommandLineTest.o $(OBJ_DIR)/StringDataSource.o $(OBJ_DIR)/StringDataSink.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 
