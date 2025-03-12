@@ -2,6 +2,7 @@
 #include "DijkstraPathRouter.h"
 #include "GeographicUtils.h"
 #include "KMLWriter.h"
+#include "DataSink.h"
 #include <limits>
 #include <algorithm>
 #include <unordered_map>
