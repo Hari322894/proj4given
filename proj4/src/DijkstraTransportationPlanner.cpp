@@ -1,5 +1,5 @@
 #include "DijkstraTransportationPlanner.h"
-#include "CDijkstraPathRouter.h"
+#include "DijkstraPathRouter.h"
 #include <queue>
 #include <unordered_map>
 #include <set>
