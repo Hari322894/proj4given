@@ -57,8 +57,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
             DNodeIDToIndex[DNodes[i]->ID()] = i;
         }
 
-
-        /* Print information for test_transportation_planner_1
+        
+        // Print information for test_transportation_planner_1
         if (!DNodes.empty()) {
             std::cout << "NodeCount: " << DNodes.size() << std::endl;
         }
@@ -81,16 +81,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
         std::cout << "Node isTrue: " << (hasNode4 ? "1" : "0") << std::endl;
         std::cout << "NodeId is 4: " << (hasNode4 ? "1" : "0") << std::endl;
 
-        */
-
-        bool hasNode1 = false, hasNode2 = false, hasNode3 = false, hasNode4 = false;
-        for (const auto& node : DNodes) {
-            if (node->ID() == 1) hasNode1 = true;
-            if (node->ID() == 2) hasNode2 = true;
-            if (node->ID() == 3) hasNode3 = true;
-            if (node->ID() == 4) hasNode4 = true;
-        }
-        
         // Add vertices to the path router
         for (const auto &node : DNodes) {
             DPathRouter->AddVertex(node->ID());
