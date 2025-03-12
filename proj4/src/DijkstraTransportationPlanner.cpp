@@ -142,7 +142,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 }
                 
                 double distance = CalculateDistance(src_node, dest_node);
-                double bus_time = distance / Config->BusSpeed() + Config->BusStopTime();
+                double bus_time = distance / Config->BikeSpeed() + Config->BusStopTime();
                 
                 auto src_time_vertex = NodeIDToTimeVertexID[nodeID];
                 auto dest_time_vertex = NodeIDToTimeVertexID[nextNodeID];
