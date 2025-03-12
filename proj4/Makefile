@@ -8,7 +8,8 @@ BIN_DIR = bin
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -g -I$(INCLUDE_DIR)
-LDFLAGS = -lgtest -lgtest_main -pthread -lexpat
+# Changed order of flags - gtest_main must come before gtest
+LDFLAGS = -lgtest_main -lgtest -pthread -lexpat
 
 # Source files
 SRC_FILES = $(wildcard $(SRC_DIR)/*.cpp)
