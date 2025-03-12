@@ -1,12 +1,15 @@
 #ifndef DIJKSTRATRANSPORTATIONPLANNER_H
 #define DIJKSTRATRANSPORTATIONPLANNER_H
 #include "TransportationPlanner.h"
+#include "DataSink.h"
 
 class CDijkstraTransportationPlanner : public CTransportationPlanner{
     private:
+
         struct SImplementation;
         std::unique_ptr<SImplementation> DImplementation;
     public:
+
         CDijkstraTransportationPlanner(std::shared_ptr<SConfiguration> config);
         ~CDijkstraTransportationPlanner();
 
