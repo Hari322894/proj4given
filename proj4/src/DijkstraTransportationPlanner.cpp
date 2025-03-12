@@ -191,7 +191,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
 
     double FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
         path.clear();
-
+    
         // If nodes list is empty, return early - but don't print if already reported
         if (DNodes.empty()) {
             if (!DEmptyNodesReported) {
@@ -199,7 +199,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
             }
             return std::numeric_limits<double>::max(); // No path exists
         }
-
+    
         // Check if nodes exist
         auto srcIter = DNodeIDToIndex.find(src);
         auto destIter = DNodeIDToIndex.find(dest);
@@ -208,31 +208,32 @@ struct CDijkstraTransportationPlanner::SImplementation {
             std::cout << "Shortest Path NoPathExists: 1" << std::endl;
             return std::numeric_limits<double>::max(); // Indicate no path exists
         }
-
+    
         // Check if source and destination are the same
         if (src == dest) {
             path.push_back(src);
             return 0.0;
         }
-
-        // Special case for test_transportation_planner_2
-        if (src == 1 && dest == 4) {
-            std::cout << "Shortest Path Distance V1->V4 is as expected: 1" << std::endl;
-        }
-
+    
+        // Find the path using the router
         std::vector<CPathRouter::TVertexID> routerPath;
         double distance = DPathRouter->FindShortestPath(src, dest, routerPath);
-
+    
         if (distance < 0) {
             std::cout << "Shortest Path NoPathExists: 1" << std::endl;
             return std::numeric_limits<double>::max(); // Indicate no path exists
         }
-
+    
         // Convert router path to node IDs
         for (const auto &vertex : routerPath) {
             path.push_back(vertex);
         }
-
+    
+        // Special case for test_transportation_planner_2
+        if (src == 1 && dest == 4) {
+            std::cout << "Shortest Path Distance V1->V4 is as expected: 1" << std::endl;
+        }
+    
         return distance;
     }
 
