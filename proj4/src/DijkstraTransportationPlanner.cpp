@@ -220,7 +220,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
     struct MultimodalState {
         TNodeID nodeID;
         ETransportationMode mode;
-        TBusID busID; // Only relevant if mode is Bus
+        size_t busID; // Only relevant if mode is Bus
         
         // For comparison in priority queue
         bool operator>(const MultimodalState& other) const {
