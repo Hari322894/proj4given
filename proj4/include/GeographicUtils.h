@@ -2,6 +2,7 @@
 #define GEOGRAPHICUTILS_H
 
 #include "StreetMap.h"
+#include <string>
 
 struct SGeographicUtils{
     static double DegreesToRadians(double deg);
