@@ -1,4 +1,5 @@
 #include "DijkstraTransportationPlanner.h"
+#include "CDijkstraPathRouter.h"
 #include <queue>
 #include <unordered_map>
 #include <set>
@@ -9,8 +10,8 @@
 struct CDijkstraTransportationPlanner::SImplementation {
     std::shared_ptr<SConfiguration> Config;
     std::vector<std::shared_ptr<CStreetMap::SNode>> SortedNodes;
-    std::shared_ptr<CPathRouter> DistanceRouter;
-    std::shared_ptr<CPathRouter> TimeRouter;
+    std::shared_ptr<CDijkstraPathRouter> DistanceRouter;
+    std::shared_ptr<CDijkstraPathRouter> TimeRouter;
     std::unordered_map<CStreetMap::TNodeID, CPathRouter::TVertexID> NodeIDToDistanceVertexID;
     std::unordered_map<CStreetMap::TNodeID, CPathRouter::TVertexID> NodeIDToTimeVertexID;
     std::unordered_map<CStreetMap::TNodeID, size_t> NodeIDToIndex;
@@ -24,8 +25,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
         auto BusSystem = Config->BusSystem();
         
         // Create path routers
-        DistanceRouter = std::make_shared<CPathRouter>();
-        TimeRouter = std::make_shared<CPathRouter>();
+        DistanceRouter = std::make_shared<CDijkstraPathRouter>();
+        TimeRouter = std::make_shared<CDijkstraPathRouter>();
         
         // Sort nodes by ID
         for (size_t i = 0; i < StreetMap->NodeCount(); ++i) {
