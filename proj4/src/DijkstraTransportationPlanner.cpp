@@ -142,7 +142,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 }
                 
                 double distance = CalculateDistance(src_node, dest_node);
-                double bus_time = distance / Config->BikeSpeed() + Config->BusStopTime();
+                double bus_time = distance / Config->BusSpeed() + Config->BusStopTime();  // FIX: Use BusSpeed() instead of BikeSpeed()
                 
                 auto src_time_vertex = NodeIDToTimeVertexID[nodeID];
                 auto dest_time_vertex = NodeIDToTimeVertexID[nextNodeID];
@@ -451,4 +451,49 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     desc.push_back("Arrive at node " + std::to_string(path.back().second));
     
     return true;
+}
+
+// ADD THIS METHOD - This is what's missing to pass test_extra_credit_get_path_description
+std::vector<std::string> CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TNodeID>& path) const {
+    std::vector<std::string> desc;
+    
+    if (path.empty()) {
+        return desc;
+    }
+    
+    auto StreetMap = DImplementation->Config->StreetMap();
+    
+    // Add starting instruction
+    auto start_node = StreetMap->NodeByID(path[0]);
+    if (!start_node) {
+        return desc;
+    }
+    
+    desc.push_back("Start at node " + std::to_string(path[0]));
+    
+    for (size_t i = 1; i < path.size(); ++i) {
+        auto prev_node_id = path[i-1];
+        auto current_node_id = path[i];
+        auto prev_node = StreetMap->NodeByID(prev_node_id);
+        auto current_node = StreetMap->NodeByID(current_node_id);
+        
+        if (!prev_node || !current_node) {
+            return desc;
+        }
+        
+        // Get direction and street name
+        double bearing = DImplementation->CalculateBearing(prev_node, current_node);
+        std::string direction = DImplementation->GetDirectionString(bearing);
+        std::string street_name = DImplementation->GetStreetName(prev_node, current_node);
+        
+        // Add instruction
+        std::stringstream ss;
+        ss << "Go " << direction << " on " << street_name << " to node " << current_node_id;
+        desc.push_back(ss.str());
+    }
+    
+    // Add ending instruction
+    desc.push_back("Arrive at node " + std::to_string(path.back()));
+    
+    return desc;
 }
