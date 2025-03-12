@@ -17,6 +17,7 @@ class CDijkstraTransportationPlanner : public CTransportationPlanner{
         double FindShortestPath(TNodeID src, TNodeID dest, std::vector< TNodeID > &path) override;
         double FindFastestPath(TNodeID src, TNodeID dest, std::vector< TTripStep > &path) override;
         bool GetPathDescription(const std::vector< TTripStep > &path, std::vector< std::string > &desc) const override;
+        std::vector<std::string> GetPathDescription(const std::vector<TNodeID>& path) const;
 };
 
 #endif
