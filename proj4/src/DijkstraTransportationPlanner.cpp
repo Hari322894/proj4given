@@ -142,7 +142,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 }
                 
                 double distance = CalculateDistance(src_node, dest_node);
-                double bus_time = distance / Config->DefaultSpeedLimit() + Config->BusStopTime();
+                double bus_time = distance / Config->BusSpeed() + Config->BusStopTime();
                 
                 auto src_time_vertex = NodeIDToTimeVertexID[nodeID];
                 auto dest_time_vertex = NodeIDToTimeVertexID[nextNodeID];
@@ -253,11 +253,17 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 auto nodeID = way->GetNodeID(j);
                 if (nodeID == node1->ID()) foundNode1 = true;
                 if (nodeID == node2->ID()) foundNode2 = true;
-            }
-            
-            if (foundNode1 && foundNode2) {
-                if (way->HasAttribute("name")) {
-                    return way->GetAttribute("name");
+                
+                // If both nodes found, check if they are consecutive in the way
+                if (foundNode1 && foundNode2 && j > 0) {
+                    auto prevNodeID = way->GetNodeID(j-1);
+                    if ((prevNodeID == node1->ID() && nodeID == node2->ID()) || 
+                        (prevNodeID == node2->ID() && nodeID == node1->ID())) {
+                        if (way->HasAttribute("name")) {
+                            return way->GetAttribute("name");
+                        }
+                        return "unnamed street";
+                    }
                 }
             }
         }
@@ -323,8 +329,8 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     
     // Convert vertex IDs back to node IDs
     for (auto vertex_id : router_path) {
-        auto node_id = std::any_cast<TNodeID>(DImplementation->DistanceRouter->GetVertexTag(vertex_id));
-        path.push_back(node_id);
+        // The vertex tag is the same as the node ID in this implementation
+        path.push_back(std::any_cast<TNodeID>(DImplementation->DistanceRouter->GetVertexTag(vertex_id)));
     }
     
     return distance;
@@ -397,9 +403,10 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     desc.push_back("Start at node " + std::to_string(path[0].second));
     
     std::string current_bus_route = "";
-    TTripStep prev_step = path[0];
+    ETransportationMode current_mode = path[0].first;
     
     for (size_t i = 1; i < path.size(); ++i) {
+        auto prev_step = path[i-1];
         auto current_step = path[i];
         auto prev_node = StreetMap->NodeByID(prev_step.second);
         auto current_node = StreetMap->NodeByID(current_step.second);
@@ -416,15 +423,16 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
                 if (!current_bus_route.empty()) {
                     desc.push_back("Take bus " + current_bus_route);
                 }
+                current_mode = ETransportationMode::Bus;
             } else if (prev_step.first == ETransportationMode::Bus) {
                 desc.push_back("Get off bus " + current_bus_route);
                 current_bus_route = "";
+                current_mode = ETransportationMode::Walk;
             }
         }
         
         // Skip adding direction instructions if we're on a bus
-        if (current_step.first == ETransportationMode::Bus) {
-            prev_step = current_step;
+        if (current_mode == ETransportationMode::Bus) {
             continue;
         }
         
@@ -437,8 +445,6 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
         std::stringstream ss;
         ss << "Go " << direction << " on " << street_name << " to node " << current_step.second;
         desc.push_back(ss.str());
-        
-        prev_step = current_step;
     }
     
     // Add ending instruction
