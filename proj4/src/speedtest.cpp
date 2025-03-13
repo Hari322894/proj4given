@@ -1,3 +1,4 @@
+/*
 #include "TransportationPlannerConfig.h"
 #include "DijkstraTransportationPlanner.h"
 #include "OpenStreetMap.h"
@@ -349,3 +350,4 @@ bool CSpeedTest::OutputResults(std::shared_ptr<CDataFactory> results, bool verbo
     NotifyString(Summary);
     return true;
 }
+    */
