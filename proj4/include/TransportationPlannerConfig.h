@@ -8,6 +8,7 @@ struct STransportationPlannerConfig : public CTransportationPlanner::SConfigurat
     std::shared_ptr<CBusSystem> DBusSystem;
     double DWalkSpeed;
     double DBikeSpeed;
+    double DBusSpeed;
     double DDefaultSpeedLimit;
     double DBusStopTime;
     int DPrecomputeTime;
