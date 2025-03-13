@@ -268,7 +268,10 @@ struct CDijkstraTransportationPlanner::SImplementation {
     
     std::string FindBusRouteBetweenNodes(const CStreetMap::TNodeID& src, 
         const CStreetMap::TNodeID& dest) const {
-if (BusRouteInfo.count(src) > 0) {
+if (BusRouteInfo.count(src) == 0) {
+return "";
+}
+
 // Check if there's a direct bus route between the nodes
 std::vector<std::string> directRoutes;
 
@@ -284,65 +287,6 @@ std::sort(directRoutes.begin(), directRoutes.end());
 return directRoutes[0];
 }
 
-// If no direct route, analyze which bus goes furthest
-std::unordered_map<std::string, std::set<CStreetMap::TNodeID>> routeCoverage;
-
-// For each bus route from this node, track all nodes it reaches
-for (const auto& [routeName, nextNodeID] : BusRouteInfo.at(src)) {
-// Add immediate next node
-routeCoverage[routeName].insert(nextNodeID);
-
-// Track nodes further along this route (up to some reasonable limit)
-CStreetMap::TNodeID currentNode = nextNodeID;
-int maxHops = 10; // Prevent infinite loops, adjust as needed
-
-while (maxHops > 0) {
-if (BusRouteInfo.count(currentNode) == 0) break;
-
-bool foundContinuation = false;
-for (const auto& [nextRouteName, furtherNodeID] : BusRouteInfo.at(currentNode)) {
-if (nextRouteName == routeName) {
-routeCoverage[routeName].insert(furtherNodeID);
-currentNode = furtherNodeID;
-foundContinuation = true;
-
-// If we found the destination, we can stop tracing this route
-if (furtherNodeID == dest) {
-maxHops = 0; // Force exit from outer loop
-break;
-}
-}
-}
-
-if (!foundContinuation) break;
-maxHops--;
-}
-}
-
-// Find route that goes furthest (has most nodes) or reaches destination
-std::string bestRoute;
-size_t maxCoverage = 0;
-
-for (const auto& [routeName, coverage] : routeCoverage) {
-// If this route reaches our destination, prioritize it
-if (coverage.count(dest) > 0) {
-if (bestRoute.empty() || routeName < bestRoute) {
-bestRoute = routeName;
-}
-} 
-// Otherwise check if it has better coverage
-else if (coverage.size() > maxCoverage) {
-maxCoverage = coverage.size();
-bestRoute = routeName;
-}
-// If tied on coverage, use alphabetical order
-else if (coverage.size() == maxCoverage && (!bestRoute.empty() && routeName < bestRoute)) {
-bestRoute = routeName;
-}
-}
-
-return bestRoute;
-}
 return "";
 }
 
