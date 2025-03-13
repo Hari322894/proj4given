@@ -1,5 +1,6 @@
 #include "DijkstraTransportationPlanner.h"
 #include "DijkstraPathRouter.h"
+#include "GeographicUtils.h"
 #include <queue>
 #include <unordered_map>
 #include <set>
@@ -190,54 +191,28 @@ struct CDijkstraTransportationPlanner::SImplementation {
     }
     
     double CalculateDistance(const std::shared_ptr<CStreetMap::SNode>& src, 
-                            const std::shared_ptr<CStreetMap::SNode>& dest) const {
-        auto src_loc = src->Location();
-        auto dest_loc = dest->Location();
-        
-        // Haversine formula for distance calculation
-        const double R = 6371000.0; // Earth radius in meters
-        double lat1 = src_loc.first * M_PI / 180.0;
-        double lat2 = dest_loc.first * M_PI / 180.0;
-        double dLat = (dest_loc.first - src_loc.first) * M_PI / 180.0;
-        double dLon = (dest_loc.second - src_loc.second) * M_PI / 180.0;
-        
-        double a = sin(dLat/2) * sin(dLat/2) +
-                  cos(lat1) * cos(lat2) *
-                  sin(dLon/2) * sin(dLon/2);
-        double c = 2 * atan2(sqrt(a), sqrt(1-a));
-        return R * c;
-    }
+        const std::shared_ptr<CStreetMap::SNode>& dest) const {
+// Convert miles to meters for consistency with the existing implementation
+return SGeographicUtils::HaversineDistanceInMiles(src->Location(), dest->Location()) * 1609.34; // 1 mile = 1609.34 meters
+}
     
-    std::string GetDirectionString(double angle) const {
-        if (angle >= 337.5 || angle < 22.5) return "north";
-        if (angle >= 22.5 && angle < 67.5) return "northeast";
-        if (angle >= 67.5 && angle < 112.5) return "east";
-        if (angle >= 112.5 && angle < 157.5) return "southeast";
-        if (angle >= 157.5 && angle < 202.5) return "south";
-        if (angle >= 202.5 && angle < 247.5) return "southwest";
-        if (angle >= 247.5 && angle < 292.5) return "west";
-        return "northwest"; // angle >= 292.5 && angle < 337.5
-    }
+std::string GetDirectionString(double angle) const {
+    // Map abbreviated directions to full names
+    std::string abbr = SGeographicUtils::BearingToDirection(angle);
+    if (abbr == "N") return "north";
+    if (abbr == "NE") return "northeast";
+    if (abbr == "E") return "east";
+    if (abbr == "SE") return "southeast";
+    if (abbr == "S") return "south";
+    if (abbr == "SW") return "southwest";
+    if (abbr == "W") return "west";
+    return "northwest"; // NW
+}
     
-    double CalculateBearing(const std::shared_ptr<CStreetMap::SNode>& src, 
-                           const std::shared_ptr<CStreetMap::SNode>& dest) const {
-        auto src_loc = src->Location();
-        auto dest_loc = dest->Location();
-        
-        double lat1 = src_loc.first * M_PI / 180.0;
-        double lon1 = src_loc.second * M_PI / 180.0;
-        double lat2 = dest_loc.first * M_PI / 180.0;
-        double lon2 = dest_loc.second * M_PI / 180.0;
-        
-        double y = sin(lon2 - lon1) * cos(lat2);
-        double x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1);
-        double bearing = atan2(y, x) * 180.0 / M_PI;
-        
-        // Convert to [0, 360) range
-        bearing = fmod(bearing + 360.0, 360.0);
-        
-        return bearing;
-    }
+double CalculateBearing(const std::shared_ptr<CStreetMap::SNode>& src, 
+    const std::shared_ptr<CStreetMap::SNode>& dest) const {
+return SGeographicUtils::CalculateBearing(src->Location(), dest->Location());
+}
     
     std::string GetStreetName(const std::shared_ptr<CStreetMap::SNode>& node1, 
                               const std::shared_ptr<CStreetMap::SNode>& node2) const {
