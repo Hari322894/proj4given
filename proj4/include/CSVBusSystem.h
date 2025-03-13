@@ -26,7 +26,7 @@ private:
     std::unique_ptr<SImplementation> DImplementation;
 };
 
-
+#endif
 
 
 
