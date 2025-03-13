@@ -289,7 +289,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     // Special case: src and dest are the same
     if (src == dest) {
         path.push_back(src);
-        return 1.0; // Success indicator
+        return 0.0; // Success indicator
     }
     
     // Get vertex IDs
@@ -330,7 +330,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     // Special case: src and dest are the same
     if (src == dest) {
         path.push_back({ETransportationMode::Walk, src});
-        return 1.0; // Success indicator
+        return 0.0; // Success indicator
     }
     
     // Get vertex IDs
