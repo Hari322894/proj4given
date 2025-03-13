@@ -24,6 +24,7 @@ struct STransportationPlannerConfig : public CTransportationPlanner::SConfigurat
         DBusSystem = bussystem;
         DWalkSpeed = walkspeed;
         DBikeSpeed = bikespeed;
+        DBusSpeed = busspeed; 
         DDefaultSpeedLimit = speedlimit;
         DBusStopTime = busstoptime;
         DPrecomputeTime = precompute;
