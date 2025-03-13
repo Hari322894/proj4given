@@ -267,29 +267,85 @@ struct CDijkstraTransportationPlanner::SImplementation {
     }
     
     std::string FindBusRouteBetweenNodes(const CStreetMap::TNodeID& src, 
-                                         const CStreetMap::TNodeID& dest) const {
-        if (BusRouteInfo.count(src) > 0) {
-            // Find the bus route that goes the furthest
-            std::string furthestRoute = "";
-           
-            
-            // First check if there's a direct bus route
-            for (const auto& [routeName, nextNodeID] : BusRouteInfo.at(src)) {
-                if (nextNodeID == dest) {
-                    // If multiple options, take the earliest sorted name
-                    if (furthestRoute.empty() || routeName < furthestRoute) {
-                        furthestRoute = routeName;
-                    }
-                }
-            }
-            
-            // If we found a direct route, return it
-            if (!furthestRoute.empty()) {
-                return furthestRoute;
-            }
-        }
-        return "";
-    }
+        const CStreetMap::TNodeID& dest) const {
+if (BusRouteInfo.count(src) > 0) {
+// Check if there's a direct bus route between the nodes
+std::vector<std::string> directRoutes;
+
+for (const auto& [routeName, nextNodeID] : BusRouteInfo.at(src)) {
+if (nextNodeID == dest) {
+directRoutes.push_back(routeName);
+}
+}
+
+// If there are direct routes, return the earliest sorted name
+if (!directRoutes.empty()) {
+std::sort(directRoutes.begin(), directRoutes.end());
+return directRoutes[0];
+}
+
+// If no direct route, analyze which bus goes furthest
+std::unordered_map<std::string, std::set<CStreetMap::TNodeID>> routeCoverage;
+
+// For each bus route from this node, track all nodes it reaches
+for (const auto& [routeName, nextNodeID] : BusRouteInfo.at(src)) {
+// Add immediate next node
+routeCoverage[routeName].insert(nextNodeID);
+
+// Track nodes further along this route (up to some reasonable limit)
+CStreetMap::TNodeID currentNode = nextNodeID;
+int maxHops = 10; // Prevent infinite loops, adjust as needed
+
+while (maxHops > 0) {
+if (BusRouteInfo.count(currentNode) == 0) break;
+
+bool foundContinuation = false;
+for (const auto& [nextRouteName, furtherNodeID] : BusRouteInfo.at(currentNode)) {
+if (nextRouteName == routeName) {
+routeCoverage[routeName].insert(furtherNodeID);
+currentNode = furtherNodeID;
+foundContinuation = true;
+
+// If we found the destination, we can stop tracing this route
+if (furtherNodeID == dest) {
+maxHops = 0; // Force exit from outer loop
+break;
+}
+}
+}
+
+if (!foundContinuation) break;
+maxHops--;
+}
+}
+
+// Find route that goes furthest (has most nodes) or reaches destination
+std::string bestRoute;
+size_t maxCoverage = 0;
+
+for (const auto& [routeName, coverage] : routeCoverage) {
+// If this route reaches our destination, prioritize it
+if (coverage.count(dest) > 0) {
+if (bestRoute.empty() || routeName < bestRoute) {
+bestRoute = routeName;
+}
+} 
+// Otherwise check if it has better coverage
+else if (coverage.size() > maxCoverage) {
+maxCoverage = coverage.size();
+bestRoute = routeName;
+}
+// If tied on coverage, use alphabetical order
+else if (coverage.size() == maxCoverage && (!bestRoute.empty() && routeName < bestRoute)) {
+bestRoute = routeName;
+}
+}
+
+return bestRoute;
+}
+return "";
+}
+
 };
 
 CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<SConfiguration> config)
@@ -385,6 +441,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     // Convert vertex IDs to trip steps
     auto StreetMap = DImplementation->Config->StreetMap();
     std::string currentBusRoute = "";
+    ETransportationMode previousMode = ETransportationMode::Walk; // Start with walking
     
     for (size_t i = 0; i < router_path.size(); ++i) {
         auto node_id = std::any_cast<TNodeID>(DImplementation->TimeRouter->GetVertexTag(router_path[i]));
@@ -397,13 +454,21 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
             
             // Check if this segment is on a bus route
             std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prev_node_id, node_id);
-            if (!busRoute.empty()) {
+            
+            // If we found a bus route and we're not already on a different bus
+            if (!busRoute.empty() && (currentBusRoute.empty() || busRoute == currentBusRoute)) {
+                // If we're switching to bus from another mode, make sure we're walking
+                if (previousMode != ETransportationMode::Bus && previousMode != ETransportationMode::Walk) {
+                    // Cannot directly transition from bike to bus - implicit mode change handled by path router
+                    // This should never happen if the router is working correctly
+                }
+                
                 mode = ETransportationMode::Bus;
                 currentBusRoute = busRoute;
             } 
             // Continue with the same bus if we're already on one
             else if (!currentBusRoute.empty()) {
-                // Check if there's a continuing bus path
+                // Check if there's a continuing bus path with the same route
                 bool foundContinuation = false;
                 for (const auto& [nextBusRoute, nextNodeID] : DImplementation->BusRouteInfo[node_id]) {
                     if (nextBusRoute == currentBusRoute && i+1 < router_path.size() && 
@@ -416,9 +481,20 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
                 if (foundContinuation) {
                     mode = ETransportationMode::Bus;
                 } else {
+                    // End of bus journey
                     currentBusRoute = "";
+                    
+                    // Check if we should switch to another bus
+                    busRoute = DImplementation->FindBusRouteBetweenNodes(prev_node_id, node_id);
+                    if (!busRoute.empty()) {
+                        mode = ETransportationMode::Bus;
+                        currentBusRoute = busRoute;
+                    }
                 }
             }
+            
+            // Remember the mode for next iteration
+            previousMode = mode;
         }
         
         path.push_back({mode, node_id});
@@ -461,16 +537,34 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
         // Check for transportation mode changes
         if (prev_step.first != current_step.first) {
             if (current_step.first == ETransportationMode::Bus) {
-                // Find the bus route
+                // Find the bus route - use the improved FindBusRouteBetweenNodes function
                 current_bus_route = DImplementation->FindBusRouteBetweenNodes(prev_step.second, current_step.second);
                 if (!current_bus_route.empty()) {
                     desc.push_back("Take bus " + current_bus_route);
                 }
                 current_mode = ETransportationMode::Bus;
-            } else if (prev_step.first == ETransportationMode::Bus) {
+            } 
+            else if (prev_step.first == ETransportationMode::Bus) {
                 desc.push_back("Get off bus " + current_bus_route);
                 current_bus_route = "";
                 current_mode = ETransportationMode::Walk;
+                
+                // Reset street name to force new direction instruction
+                current_street_name = "";
+            }
+            else if (current_step.first == ETransportationMode::Bike) {
+                desc.push_back("Switch to biking");
+                current_mode = ETransportationMode::Bike;
+                
+                // Reset street name to force new direction instruction
+                current_street_name = "";
+            }
+            else if (prev_step.first == ETransportationMode::Bike) {
+                desc.push_back("Switch to walking");
+                current_mode = ETransportationMode::Walk;
+                
+                // Reset street name to force new direction instruction
+                current_street_name = "";
             }
         }
         
@@ -484,7 +578,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
         double bearing = DImplementation->CalculateBearing(prev_node, current_node);
         std::string direction = DImplementation->GetDirectionString(bearing);
         
-        // Only add a new direction instruction if the street name changes
+        // Add a new direction instruction if the street name changes
         if (street_name != current_street_name) {
             current_street_name = street_name;
             
