@@ -16,6 +16,8 @@ struct CDijkstraTransportationPlanner::SImplementation {
     std::shared_ptr<CDijkstraPathRouter> TimeRouter;
     std::unordered_map<CStreetMap::TNodeID, CPathRouter::TVertexID> NodeIDToDistanceVertexID;
     std::unordered_map<CStreetMap::TNodeID, CPathRouter::TVertexID> NodeIDToTimeVertexID;
+    std::unordered_map<CPathRouter::TVertexID, CStreetMap::TNodeID> DistanceVertexIDToNodeID;
+    std::unordered_map<CPathRouter::TVertexID, CStreetMap::TNodeID> TimeVertexIDToNodeID;
     std::unordered_map<CStreetMap::TNodeID, size_t> NodeIDToIndex;
     std::unordered_map<CBusSystem::TStopID, CStreetMap::TNodeID> StopIDToNodeID;
     std::unordered_map<CBusSystem::TStopID, std::string> StopIDToStopName;
@@ -51,8 +53,15 @@ struct CDijkstraTransportationPlanner::SImplementation {
         // Build the node to vertex mappings and add vertices to the routers
         for (size_t i = 0; i < SortedNodes.size(); ++i) {
             auto node = SortedNodes[i];
-            NodeIDToDistanceVertexID[node->ID()] = DistanceRouter->AddVertex(node->ID());
-            NodeIDToTimeVertexID[node->ID()] = TimeRouter->AddVertex(node->ID());
+            auto distVertexID = DistanceRouter->AddVertex(node->ID());
+            auto timeVertexID = TimeRouter->AddVertex(node->ID());
+            
+            NodeIDToDistanceVertexID[node->ID()] = distVertexID;
+            NodeIDToTimeVertexID[node->ID()] = timeVertexID;
+            
+            // Store reverse mappings for lookup
+            DistanceVertexIDToNodeID[distVertexID] = node->ID();
+            TimeVertexIDToNodeID[timeVertexID] = node->ID();
         }
         
         // Map bus stops to nodes
@@ -117,6 +126,11 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 
                 // Calculate distance between nodes
                 double distance = SGeographicUtils::HaversineDistanceInMiles(src_node->Location(), dest_node->Location());
+                
+                // Skip if distance is zero or negative
+                if (distance <= 0.0) {
+                    continue;
+                }
                 
                 // Get vertex IDs
                 auto src_dist_vertex = NodeIDToDistanceVertexID[src_id];
@@ -224,7 +238,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
         
         // Separate degrees, minutes, seconds
         int lat_deg = static_cast<int>(lat);
-        double lat_min_full = (lat - lat_deg) * 60.0;
+        double lat_min_full = std::abs(lat - lat_deg) * 60.0;
         int lat_min = static_cast<int>(lat_min_full);
         int lat_sec = static_cast<int>((lat_min_full - lat_min) * 60.0);
         
@@ -312,7 +326,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     // Make sure source and destination are valid
     if (DImplementation->NodeIDToDistanceVertexID.find(src) == DImplementation->NodeIDToDistanceVertexID.end() ||
         DImplementation->NodeIDToDistanceVertexID.find(dest) == DImplementation->NodeIDToDistanceVertexID.end()) {
-        return -1.0; // Invalid nodes
+        return CPathRouter::NoPathExists; // Invalid nodes
     }
     
     // Get vertex IDs for the source and destination
@@ -325,17 +339,12 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     
     // If no path found or distance is infinite
     if (distance < 0.0) {
-        return -1.0;
+        return CPathRouter::NoPathExists;
     }
     
     // Convert router path (vertex IDs) back to node IDs
     for (const auto& vertexID : routerPath) {
-        for (const auto& [nodeID, distVertexID] : DImplementation->NodeIDToDistanceVertexID) {
-            if (distVertexID == vertexID) {
-                path.push_back(nodeID);
-                break;
-            }
-        }
+        path.push_back(DImplementation->DistanceVertexIDToNodeID[vertexID]);
     }
     
     return distance;
@@ -348,7 +357,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     // Make sure source and destination are valid
     if (DImplementation->NodeIDToTimeVertexID.find(src) == DImplementation->NodeIDToTimeVertexID.end() ||
         DImplementation->NodeIDToTimeVertexID.find(dest) == DImplementation->NodeIDToTimeVertexID.end()) {
-        return -1.0; // Invalid nodes
+        return CPathRouter::NoPathExists; // Invalid nodes
     }
     
     // Get vertex IDs for the source and destination
@@ -361,28 +370,22 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     
     // If no path found or time is infinite
     if (time < 0.0) {
-        return -1.0;
+        return CPathRouter::NoPathExists;
     }
     
     // Convert router path (vertex IDs) to trip steps
     auto StreetMap = DImplementation->Config->StreetMap();
     
-    // Maps from vertex ID to node ID
-    std::unordered_map<CPathRouter::TVertexID, TNodeID> vertexToNodeID;
-    for (const auto& [nodeID, vertexID] : DImplementation->NodeIDToTimeVertexID) {
-        vertexToNodeID[vertexID] = nodeID;
-    }
-    
-    // Determine the most efficient mode of transportation for each step
+    // Process each node in the path
     for (size_t i = 0; i < routerPath.size(); ++i) {
-        auto currentNodeID = vertexToNodeID[routerPath[i]];
+        auto currentNodeID = DImplementation->TimeVertexIDToNodeID[routerPath[i]];
         
         // Determine transportation mode (default to Walk)
         ETransportationMode mode = ETransportationMode::Walk;
         
         // If not at the first node, determine the mode based on the previous node
         if (i > 0) {
-            auto prevNodeID = vertexToNodeID[routerPath[i-1]];
+            auto prevNodeID = DImplementation->TimeVertexIDToNodeID[routerPath[i-1]];
             auto prevNode = StreetMap->NodeByID(prevNodeID);
             auto currentNode = StreetMap->NodeByID(currentNodeID);
             
@@ -410,12 +413,14 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     }
     
     // Optimize the path by combining consecutive steps with the same transportation mode
-    for (size_t i = 1; i < path.size(); ++i) {
-        if (path[i].first == path[i-1].first) {
-            // If this node and the previous node use the same transportation mode,
-            // remove this step (keeping just the final destination node for this mode)
-            path.erase(path.begin() + i - 1);
-            --i; // Adjust index after erasure
+    // This needs to remain for each node to keep the nodes in the correct order
+    if (path.size() > 1) {
+        for (size_t i = 1; i < path.size(); ++i) {
+            if (i < path.size() && path[i].first == path[i-1].first) {
+                path[i-1].second = path[i].second;
+                path.erase(path.begin() + i);
+                --i; // Adjust index after erasure
+            }
         }
     }
     
@@ -514,6 +519,9 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     
     // Add ending point description
     auto endNode = StreetMap->NodeByID(path.back().second);
+    if (!endNode) {
+        return false;
+    }
     desc.push_back("End at " + DImplementation->FormatLocation(endNode));
     
     return true;
