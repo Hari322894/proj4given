@@ -453,5 +453,5 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     // Add ending instruction
     desc.push_back("Arrive at node " + std::to_string(path.back().second));
     
-    return true;
+    return desc.size() >= 2;
 }
