@@ -137,7 +137,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 auto dest_dist_vertex = NodeIDToDistanceVertexID[dest_id];
                 
                 // Add edge to distance router (follow oneway directions)
-                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, false);
+                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, true);
                 if (!is_oneway) {
                     DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, false);
                 }
@@ -335,7 +335,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     
     // Find shortest path using the distance router
     std::vector<CPathRouter::TVertexID> routerPath;
-    double distance = DImplementation->FindShortestPath(srcVertex, destVertex, routerPath);
+    double distance = DImplementation->DistanceRouter->FindShortestPath(srcVertex, destVertex, routerPath);
     
     // If no path found or distance is infinite
     if (distance < 0.0) {
