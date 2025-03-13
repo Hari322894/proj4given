@@ -335,7 +335,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     
     // Find shortest path using the distance router
     std::vector<CPathRouter::TVertexID> routerPath;
-    double distance = DImplementation->DistanceRouter->FindShortestPath(srcVertex, destVertex, routerPath);
+    double distance = DImplementation->FindShortestPath(srcVertex, destVertex, routerPath);
     
     // If no path found or distance is infinite
     if (distance < 0.0) {
