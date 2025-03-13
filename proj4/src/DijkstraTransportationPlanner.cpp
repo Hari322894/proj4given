@@ -114,9 +114,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 bool is_oneway = IsOneWay(way);
                 
                 // Add edge to distance router (follow oneway directions)
-                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, false);
+                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, true);
                 if (!is_oneway) {
-                    DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, false);
+                    DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, true);
                 }
                 
                 // Add edges to time router
