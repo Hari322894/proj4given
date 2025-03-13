@@ -323,14 +323,6 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
         return CPathRouter::NoPathExists;
     }
     
-    // ACTUAL CHANGE: Check for direct path
-    // In certain test cases, we need to make sure we're handling direct paths correctly
-    if (router_path.size() == 2 && router_path[0] == src_vertex && router_path[1] == dest_vertex) {
-        path.push_back(src);
-        path.push_back(dest);
-        return distance;
-    }
-    
     // Convert vertex IDs back to node IDs
     for (auto vertex_id : router_path) {
         // The vertex tag is the same as the node ID in this implementation
