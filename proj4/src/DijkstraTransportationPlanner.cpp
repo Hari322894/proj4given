@@ -277,19 +277,19 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     
     // Check if source or destination is invalid
     if (src == CStreetMap::InvalidNodeID || dest == CStreetMap::InvalidNodeID) {
-        return 0.0; // Return 0.0 to indicate failure (no path exists)
+        return CPathRouter::NoPathExists; // Use the proper constant for no path
     }
     
     // Check if nodes exist in our map
     if (DImplementation->NodeIDToDistanceVertexID.count(src) == 0 || 
         DImplementation->NodeIDToDistanceVertexID.count(dest) == 0) {
-        return 0.0; // Return 0.0 to indicate failure (no path exists)
+        return CPathRouter::NoPathExists; // Use the proper constant for no path
     }
     
     // Special case: src and dest are the same
     if (src == dest) {
         path.push_back(src);
-        return 1.0; // Return 1.0 to indicate success
+        return 1.0; // Success indicator
     }
     
     // Get vertex IDs
@@ -301,7 +301,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     double distance = DImplementation->DistanceRouter->FindShortestPath(src_vertex, dest_vertex, router_path);
     
     if (distance == CPathRouter::NoPathExists || router_path.empty()) {
-        return 0.0; // Return 0.0 to indicate failure (no path exists)
+        return CPathRouter::NoPathExists; // Use the proper constant for no path
     }
     
     // Convert vertex IDs back to node IDs
@@ -310,7 +310,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
         path.push_back(std::any_cast<TNodeID>(DImplementation->DistanceRouter->GetVertexTag(vertex_id)));
     }
     
-    return 1.0; // Return 1.0 to indicate success
+    return 1.0; // Success indicator
 }
 
 double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep>& path) {
@@ -318,19 +318,19 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     
     // Check if source or destination is invalid
     if (src == CStreetMap::InvalidNodeID || dest == CStreetMap::InvalidNodeID) {
-        return 0.0; // Return 0.0 to indicate failure (no path exists)
+        return CPathRouter::NoPathExists; // Use the proper constant for no path
     }
     
     // Check if nodes exist in our map
     if (DImplementation->NodeIDToTimeVertexID.count(src) == 0 || 
         DImplementation->NodeIDToTimeVertexID.count(dest) == 0) {
-        return 0.0; // Return 0.0 to indicate failure (no path exists)
+        return CPathRouter::NoPathExists; // Use the proper constant for no path
     }
     
     // Special case: src and dest are the same
     if (src == dest) {
         path.push_back({ETransportationMode::Walk, src});
-        return 1.0; // Return 1.0 to indicate success
+        return 1.0; // Success indicator
     }
     
     // Get vertex IDs
@@ -342,7 +342,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     double time = DImplementation->TimeRouter->FindShortestPath(src_vertex, dest_vertex, router_path);
     
     if (time == CPathRouter::NoPathExists || router_path.empty()) {
-        return 0.0; // Return 0.0 to indicate failure (no path exists)
+        return CPathRouter::NoPathExists; // Use the proper constant for no path
     }
     
     // Convert vertex IDs to trip steps
@@ -376,7 +376,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         path.push_back({mode, node_id});
     }
     
-    return 1.0; // Return 1.0 to indicate success
+    return 1.0; // Success indicator
 }
 
 bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripStep>& path, std::vector<std::string>& desc) const {
