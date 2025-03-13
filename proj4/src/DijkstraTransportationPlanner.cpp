@@ -271,6 +271,7 @@ std::shared_ptr<CStreetMap::SNode> CDijkstraTransportationPlanner::SortedNodeByI
     }
     return nullptr;
 }
+
 double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID>& path) {
     path.clear();
     
