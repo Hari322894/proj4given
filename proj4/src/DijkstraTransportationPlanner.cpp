@@ -158,7 +158,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 }
                 
                 double distance = CalculateDistance(src_node, dest_node);
-                double busTime = distance / Config->BusSpeed() + Config->BusStopTime();
+                double busTime = distance / Config->DefaultSpeedLimit() + Config->BusStopTime();
                 
                 auto src_time_vertex = NodeIDToTimeVertexID[nodeID];
                 auto dest_time_vertex = NodeIDToTimeVertexID[nextNodeID];
@@ -343,7 +343,7 @@ std::shared_ptr<CBusSystem> CDijkstraTransportationPlanner::BusSystem() const {
     return DImplementation->Config->BusSystem();
 }
 
-double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID>& path) {
+double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TTripStep>& path) {
     path.clear();
     
     // Verify source and destination are valid
@@ -367,7 +367,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
     return distance;
 }
 
-double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TNodeID>& path) {
+double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep>& path) {
     path.clear();
     
     // Verify source and destination are valid
@@ -402,7 +402,7 @@ CStreetMap::TNodeID CDijkstraTransportationPlanner::GetNodeIDByIndex(std::size_t
     return CStreetMap::InvalidNodeID;
 }
 
-std::string CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TNodeID>& path) const {
+std::string CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripStep>& path) const {
     std::stringstream Description;
     auto StreetMap = DImplementation->Config->StreetMap();
     
@@ -543,7 +543,7 @@ std::vector<std::tuple<std::string, double, double>> CDijkstraTransportationPlan
     }
     
     // Get full path
-    std::vector<TNodeID> path;
+    std::vector<TTripStep> path;
     double totalTime = FindFastestPath(src, dest, path);
     
     if (path.size() <= 1) {
@@ -604,7 +604,7 @@ std::vector<std::tuple<std::string, double, double>> CDijkstraTransportationPlan
             segmentStart = path[i-1];
             
             // Calculate time for this bus segment
-            double busTime = distance / DImplementation->Config->BusSpeed() + DImplementation->Config->BusStopTime();
+            double busTime = distance / DImplementation->Config->DefaultSpeedLimit() + DImplementation->Config->BusStopTime();
             segmentDistance += distance;
             segmentTime += busTime;
         }
@@ -633,7 +633,7 @@ std::vector<std::tuple<std::string, double, double>> CDijkstraTransportationPlan
                 segmentTime += walkTime;
             }
             else if (currentMode == "bus") {
-                double busTime = distance / DImplementation->Config->BusSpeed() + DImplementation->Config->BusStopTime();
+                double busTime = distance / DImplementation->Config->DefaultSpeedLimit() + DImplementation->Config->BusStopTime();
                 segmentDistance += distance;
                 segmentTime += busTime;
             }
@@ -661,7 +661,7 @@ std::vector<std::tuple<std::string, double, double>> CDijkstraTransportationPlan
     }
     
     // Get full path
-    std::vector<TNodeID> path;
+    std::vector<TTripStep> path;
     double totalDistance = FindShortestPath(src, dest, path);
     
     if (path.size() <= 1) {
