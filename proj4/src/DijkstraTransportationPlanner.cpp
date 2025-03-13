@@ -137,9 +137,9 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 auto dest_dist_vertex = NodeIDToDistanceVertexID[dest_id];
                 
                 // Add edge to distance router (follow oneway directions)
-                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, true);
+                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, false);
                 if (!is_oneway) {
-                    DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, true);
+                    DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, false);
                 }
                 
                 // Get time router vertex IDs
