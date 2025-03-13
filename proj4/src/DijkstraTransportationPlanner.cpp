@@ -271,7 +271,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
         if (BusRouteInfo.count(src) > 0) {
             // Find the bus route that goes the furthest
             std::string furthestRoute = "";
-            size_t furthestDistance = 0;
+           
             
             // First check if there's a direct bus route
             for (const auto& [routeName, nextNodeID] : BusRouteInfo.at(src)) {
