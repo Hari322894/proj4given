@@ -17,7 +17,6 @@ class CTransportationPlanner{
             virtual std::shared_ptr<CBusSystem> BusSystem() const noexcept = 0;
             virtual double WalkSpeed() const noexcept = 0;
             virtual double BikeSpeed() const noexcept = 0;
-            virtual double BusSpeed() const noexcept = 0;
             virtual double DefaultSpeedLimit() const noexcept = 0;
             virtual double BusStopTime() const noexcept = 0;
             virtual int PrecomputeTime() const noexcept = 0;

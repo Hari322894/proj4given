@@ -8,7 +8,6 @@ struct STransportationPlannerConfig : public CTransportationPlanner::SConfigurat
     std::shared_ptr<CBusSystem> DBusSystem;
     double DWalkSpeed;
     double DBikeSpeed;
-    double DBusSpeed;
     double DDefaultSpeedLimit;
     double DBusStopTime;
     int DPrecomputeTime;
@@ -17,7 +16,6 @@ struct STransportationPlannerConfig : public CTransportationPlanner::SConfigurat
                                     std::shared_ptr<CBusSystem> bussystem,
                                     double walkspeed = 3.0,
                                     double bikespeed = 8.0,
-                                    double busspeed = 15.0,  // Add bus speed parameter
                                     double speedlimit = 25.0,
                                     double busstoptime = 30.0,
                                     int precompute = 30){
@@ -25,7 +23,6 @@ struct STransportationPlannerConfig : public CTransportationPlanner::SConfigurat
         DBusSystem = bussystem;
         DWalkSpeed = walkspeed;
         DBikeSpeed = bikespeed;
-        DBusSpeed = busspeed; 
         DDefaultSpeedLimit = speedlimit;
         DBusStopTime = busstoptime;
         DPrecomputeTime = precompute;
@@ -46,10 +43,6 @@ struct STransportationPlannerConfig : public CTransportationPlanner::SConfigurat
 
     double BikeSpeed() const noexcept{
         return DBikeSpeed;
-    }
-
-    double BusSpeed() const noexcept{  // Add the missing method
-        return DBusSpeed;
     }
 
     double DefaultSpeedLimit() const noexcept{
