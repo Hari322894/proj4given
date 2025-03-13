@@ -310,7 +310,7 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
         path.push_back(std::any_cast<TNodeID>(DImplementation->DistanceRouter->GetVertexTag(vertex_id)));
     }
     
-    return 1.0; // Success indicator
+    return distance; // Success indicator
 }
 
 double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep>& path) {
@@ -376,7 +376,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         path.push_back({mode, node_id});
     }
     
-    return 1.0; // Success indicator
+    return time; // Success indicator
 }
 
 bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripStep>& path, std::vector<std::string>& desc) const {
