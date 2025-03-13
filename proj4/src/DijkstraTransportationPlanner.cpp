@@ -311,6 +311,12 @@ double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID des
         return CPathRouter::NoPathExists;
     }
     
+    // Special case: src and dest are the same
+    if (src == dest) {
+        path.push_back(src);
+        return 0.0; // Distance to self is 0
+    }
+    
     // Get vertex IDs
     auto src_vertex = DImplementation->NodeIDToDistanceVertexID[src];
     auto dest_vertex = DImplementation->NodeIDToDistanceVertexID[dest];
@@ -346,6 +352,12 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         return CPathRouter::NoPathExists;
     }
     
+    // Special case: src and dest are the same
+    if (src == dest) {
+        path.push_back({ETransportationMode::Walk, src});
+        return 0.0; // Time to self is 0
+    }
+    
     // Get vertex IDs
     auto src_vertex = DImplementation->NodeIDToTimeVertexID[src];
     auto dest_vertex = DImplementation->NodeIDToTimeVertexID[dest];
@@ -372,6 +384,17 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
             std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prev_node_id, node_id);
             if (!busRoute.empty()) {
                 mode = ETransportationMode::Bus;
+            } else {
+                // Check if we should continue the same transportation mode
+                if (i > 1 && path[i-1].first == ETransportationMode::Bus) {
+                    auto prev_prev_node_id = std::any_cast<TNodeID>(DImplementation->TimeRouter->GetVertexTag(router_path[i-2]));
+                    std::string prevBusRoute = DImplementation->FindBusRouteBetweenNodes(prev_prev_node_id, prev_node_id);
+                    
+                    // Continue bus mode if we're still on the same bus route
+                    if (!prevBusRoute.empty()) {
+                        mode = ETransportationMode::Bus;
+                    }
+                }
             }
         }
         
@@ -389,6 +412,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     }
     
     auto StreetMap = DImplementation->Config->StreetMap();
+    auto BusSystem = DImplementation->Config->BusSystem();
     
     // Add starting instruction
     auto start_node = StreetMap->NodeByID(path[0].second);
@@ -399,6 +423,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     desc.push_back("Start at node " + std::to_string(path[0].second));
     
     std::string current_bus_route = "";
+    std::string last_street_name = "";
     ETransportationMode current_mode = path[0].first;
     
     for (size_t i = 1; i < path.size(); ++i) {
@@ -436,6 +461,13 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
         double bearing = DImplementation->CalculateBearing(prev_node, current_node);
         std::string direction = DImplementation->GetDirectionString(bearing);
         std::string street_name = DImplementation->GetStreetName(prev_node, current_node);
+        
+        // Check if we're continuing on the same street
+        if (street_name == last_street_name && !last_street_name.empty()) {
+            continue; // Skip redundant instructions
+        }
+        
+        last_street_name = street_name;
         
         // Add instruction
         std::stringstream ss;
