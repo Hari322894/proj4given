@@ -389,80 +389,69 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     auto StreetMap = DImplementation->Config->StreetMap();
     auto BusSystem = DImplementation->Config->BusSystem();
     
-    // Add starting instruction with more context
+    // Add starting instruction
     auto start_node = StreetMap->NodeByID(path[0].second);
     if (!start_node) {
         return false;
     }
     
-    std::stringstream start_ss;
-    start_ss << "Start at node " << path[0].second;
-    if (start_node->HasAttribute("name")) {
-        start_ss << " (" << start_node->GetAttribute("name") << ")";
-    }
-    desc.push_back(start_ss.str());
+    desc.push_back("Start at node " + std::to_string(path[0].second));
     
     std::string current_bus_route = "";
-    std::string current_street = "";
-    ETransportationMode current_mode = path[0].first;
+    std::string last_street_name = "";
+    ETransportationMode last_mode = path[0].first;
     
     for (size_t i = 1; i < path.size(); ++i) {
-        auto prev_node_id = path[i-1].second;
-        auto curr_node_id = path[i].second;
-        auto prev_mode = path[i-1].first;
-        auto curr_mode = path[i].first;
+        auto prev_step = path[i-1];
+        auto current_step = path[i];
+        auto prev_node = StreetMap->NodeByID(prev_step.second);
+        auto current_node = StreetMap->NodeByID(current_step.second);
         
-        auto prev_node = StreetMap->NodeByID(prev_node_id);
-        auto curr_node = StreetMap->NodeByID(curr_node_id);
-        
-        if (!prev_node || !curr_node) {
+        if (!prev_node || !current_node) {
             return false;
         }
         
-        // Check for mode change
-        if (prev_mode != curr_mode) {
-            if (curr_mode == ETransportationMode::Bus) {
-                // Starting bus journey
-                std::string bus_route = DImplementation->FindBusRouteBetweenNodes(prev_node_id, curr_node_id);
-                if (!bus_route.empty()) {
-                    current_bus_route = bus_route;
-                    std::stringstream ss;
-                    ss << "Take bus " << bus_route << " at node " << prev_node_id;
-                    desc.push_back(ss.str());
+        // Handle transportation mode changes
+        if (prev_step.first != current_step.first) {
+            if (current_step.first == ETransportationMode::Bus) {
+                // Find the bus route
+                current_bus_route = DImplementation->FindBusRouteBetweenNodes(prev_step.second, current_step.second);
+                if (!current_bus_route.empty()) {
+                    desc.push_back("Take bus " + current_bus_route);
                 }
-            } else if (prev_mode == ETransportationMode::Bus) {
-                // Ending bus journey
-                std::stringstream ss;
-                ss << "Get off bus " << current_bus_route << " at node " << curr_node_id;
-                desc.push_back(ss.str());
+                last_mode = ETransportationMode::Bus;
+            } else if (prev_step.first == ETransportationMode::Bus) {
+                desc.push_back("Get off bus " + current_bus_route);
                 current_bus_route = "";
+                last_mode = ETransportationMode::Walk;
             }
         }
         
-        // Only add walking directions if we're not on a bus
-        if (curr_mode == ETransportationMode::Walk) {
-            std::string street_name = DImplementation->GetStreetName(prev_node, curr_node);
-            double bearing = DImplementation->CalculateBearing(prev_node, curr_node);
-            std::string direction = DImplementation->GetDirectionString(bearing);
-            
-            // Only add direction if street changes or it's the first segment
-            if (street_name != current_street) {
-                std::stringstream ss;
-                ss << "Go " << direction << " on " << street_name << " to node " << curr_node_id;
-                desc.push_back(ss.str());
-                current_street = street_name;
-            }
+        // Skip adding direction instructions if we're on a bus
+        if (last_mode == ETransportationMode::Bus) {
+            continue;
         }
+        
+        // Get direction and street name
+        double bearing = DImplementation->CalculateBearing(prev_node, current_node);
+        std::string direction = DImplementation->GetDirectionString(bearing);
+        std::string street_name = DImplementation->GetStreetName(prev_node, current_node);
+        
+        // Check if we're continuing on the same street
+        if (street_name == last_street_name && !last_street_name.empty()) {
+            continue; // Skip redundant instructions
+        }
+        
+        last_street_name = street_name;
+        
+        // Add instruction
+        std::stringstream ss;
+        ss << "Go " << direction << " on " << street_name << " to node " << current_step.second;
+        desc.push_back(ss.str());
     }
     
-    // Add arrival instruction
-    std::stringstream end_ss;
-    end_ss << "Arrive at node " << path.back().second;
-    auto end_node = StreetMap->NodeByID(path.back().second);
-    if (end_node && end_node->HasAttribute("name")) {
-        end_ss << " (" << end_node->GetAttribute("name") << ")";
-    }
-    desc.push_back(end_ss.str());
+    // Add ending instruction
+    desc.push_back("Arrive at node " + std::to_string(path.back().second));
     
     return true;
 }
