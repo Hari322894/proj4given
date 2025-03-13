@@ -193,7 +193,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
     double CalculateDistance(const std::shared_ptr<CStreetMap::SNode>& src, 
         const std::shared_ptr<CStreetMap::SNode>& dest) const {
 // Convert miles to meters for consistency with the existing implementation
-return SGeographicUtils::HaversineDistanceInMiles(src->Location(), dest->Location()) * 1609.34; // 1 mile = 1609.34 meters
+return SGeographicUtils::HaversineDistanceInMiles(src->Location(), dest->Location()); // 1 mile = 1609.34 meters
 }
     
 std::string GetDirectionString(double angle) const {
