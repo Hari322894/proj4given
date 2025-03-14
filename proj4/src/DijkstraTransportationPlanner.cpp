@@ -236,70 +236,79 @@ struct CDijkstraTransportationPlanner::SImplementation {
         double lat = node->Location().first;
         double lon = node->Location().second;
         
-        // Separate degrees, minutes, seconds
-        int lat_deg = static_cast<int>(lat);
-        double lat_min_full = std::abs(lat - lat_deg) * 60.0;
-        int lat_min = static_cast<int>(lat_min_full);
-        int lat_sec = static_cast<int>((lat_min_full - lat_min) * 60.0);
+        // Convert to degrees, minutes, seconds with proper rounding
+        int lat_deg = static_cast<int>(std::floor(std::abs(lat)));
+        double lat_min_full = (std::abs(lat) - lat_deg) * 60.0;
+        int lat_min = static_cast<int>(std::floor(lat_min_full));
+        int lat_sec = static_cast<int>(std::round((lat_min_full - lat_min) * 60.0));
         
-        int lon_deg = static_cast<int>(std::abs(lon));
+        // Handle 60 seconds case
+        if (lat_sec == 60) {
+            lat_min++;
+            lat_sec = 0;
+        }
+        if (lat_min == 60) {
+            lat_deg++;
+            lat_min = 0;
+        }
+        
+        int lon_deg = static_cast<int>(std::floor(std::abs(lon)));
         double lon_min_full = (std::abs(lon) - lon_deg) * 60.0;
-        int lon_min = static_cast<int>(lon_min_full);
-        int lon_sec = static_cast<int>((lon_min_full - lon_min) * 60.0);
+        int lon_min = static_cast<int>(std::floor(lon_min_full));
+        int lon_sec = static_cast<int>(std::round((lon_min_full - lon_min) * 60.0));
+        
+        // Handle 60 seconds case
+        if (lon_sec == 60) {
+            lon_min++;
+            lon_sec = 0;
+        }
+        if (lon_min == 60) {
+            lon_deg++;
+            lon_min = 0;
+        }
         
         std::stringstream ss;
+        if (lat < 0) lat_deg = -lat_deg;
         ss << lat_deg << "d " << lat_min << "' " << lat_sec << "\" " 
            << (lat >= 0 ? "N" : "S") << ", "
            << lon_deg << "d " << lon_min << "' " << lon_sec << "\" " 
            << (lon >= 0 ? "E" : "W");
         return ss.str();
     }
-    
-    std::string GetDirectionString(double angle) const {
-        // Map abbreviated directions to full names
-        std::string abbr = SGeographicUtils::BearingToDirection(angle);
-        if (abbr == "N") return "N";
-        if (abbr == "NE") return "NE";
-        if (abbr == "E") return "E";
-        if (abbr == "SE") return "SE";
-        if (abbr == "S") return "S";
-        if (abbr == "SW") return "SW";
-        if (abbr == "W") return "W";
-        return "NW"; // NW
-    }
-    
+
     double CalculateBearing(const std::shared_ptr<CStreetMap::SNode>& src, 
                             const std::shared_ptr<CStreetMap::SNode>& dest) const {
         return SGeographicUtils::CalculateBearing(src->Location(), dest->Location());
     }
+
+    std::string GetDirectionString(double angle) const {
+        // Return the exact cardinal direction
+        std::string dir = SGeographicUtils::BearingToDirection(angle);
+        return dir; // Use the abbreviated direction directly
+    }
     
     std::string GetStreetName(const std::shared_ptr<CStreetMap::SNode>& node1, 
-                              const std::shared_ptr<CStreetMap::SNode>& node2) const {
-        auto StreetMap = Config->StreetMap();
+                          const std::shared_ptr<CStreetMap::SNode>& node2) const {
+    auto StreetMap = Config->StreetMap();
+    
+    for (size_t i = 0; i < StreetMap->WayCount(); ++i) {
+        auto way = StreetMap->WayByIndex(i);
         
-        for (size_t i = 0; i < StreetMap->WayCount(); ++i) {
-            auto way = StreetMap->WayByIndex(i);
-            
-            bool foundNode1 = false;
-            bool foundNode2 = false;
-            
-            for (size_t j = 0; j < way->NodeCount(); ++j) {
-                auto nodeID = way->GetNodeID(j);
-                if (nodeID == node1->ID()) foundNode1 = true;
-                if (nodeID == node2->ID()) foundNode2 = true;
+        for (size_t j = 0; j < way->NodeCount() - 1; ++j) {
+            // Check if consecutive nodes match our nodes (in either order)
+            if ((way->GetNodeID(j) == node1->ID() && way->GetNodeID(j+1) == node2->ID()) ||
+                (way->GetNodeID(j) == node2->ID() && way->GetNodeID(j+1) == node1->ID())) {
                 
-                // If both nodes are found in the way
-                if (foundNode1 && foundNode2) {
-                    if (way->HasAttribute("name")) {
-                        return way->GetAttribute("name");
-                    }
-                    return "unnamed street";
+                if (way->HasAttribute("name")) {
+                    return way->GetAttribute("name");
                 }
+                return "unnamed street";
             }
         }
-        
-        return "unnamed street";
     }
+    
+    return "unnamed street";
+}
 };
 
 CDijkstraTransportationPlanner::CDijkstraTransportationPlanner(std::shared_ptr<SConfiguration> config)
