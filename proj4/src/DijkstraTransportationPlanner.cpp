@@ -423,28 +423,3 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     return time;
 }
 
-std::string SImplementation::FindBusRouteBetweenNodes(const CStreetMap::TNodeID& src, 
-    const CStreetMap::TNodeID& dest) const {
-    // Check if source node has any bus routes
-    if (BusRouteInfo.count(src) == 0) {
-        return "";
-    }
-
-    // Check if there's a direct bus route between the nodes
-    const auto& routes = BusRouteInfo.at(src);
-    std::vector<std::string> directRoutes;
-
-    for (const auto& [routeName, nextNodeID] : routes) {
-        if (nextNodeID == dest) {
-            directRoutes.push_back(routeName);
-        }
-    }
-
-    // If there are direct routes, return the earliest sorted name
-    if (!directRoutes.empty()) {
-        std::sort(directRoutes.begin(), directRoutes.end());
-        return directRoutes[0];
-    }
-
-    return "";
-}
