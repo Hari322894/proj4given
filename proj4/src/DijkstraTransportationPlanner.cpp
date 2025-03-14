@@ -446,7 +446,6 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 double Distance = SGeographicUtils::HaversineDistanceInMiles(CurrentLocation, NextLocation);
                 double Bearing = SGeographicUtils::CalculateBearing(CurrentLocation, NextLocation);
                 std::string Direction = SGeographicUtils::BearingToDirection(Bearing);
-                
                 // Find street name
                 std::string StreetName;
                 size_t CurrentIndex = DNodeIDToIndex.at(CurrentNodeID);
