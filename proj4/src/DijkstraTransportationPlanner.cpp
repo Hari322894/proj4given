@@ -363,6 +363,12 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     // Clear the output path
     path.clear();
     
+    // Special case: if src and dest are the same
+    if (src == dest) {
+        path.push_back({ETransportationMode::Walk, src});
+        return 0.0;
+    }
+    
     // Make sure source and destination are valid
     if (DImplementation->NodeIDToTimeVertexID.find(src) == DImplementation->NodeIDToTimeVertexID.end() ||
         DImplementation->NodeIDToTimeVertexID.find(dest) == DImplementation->NodeIDToTimeVertexID.end()) {
@@ -373,64 +379,89 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     auto srcVertex = DImplementation->NodeIDToTimeVertexID[src];
     auto destVertex = DImplementation->NodeIDToTimeVertexID[dest];
     
-    // Find fastest path using the time router
+    // Find shortest path using the time router
     std::vector<CPathRouter::TVertexID> routerPath;
     double time = DImplementation->TimeRouter->FindShortestPath(srcVertex, destVertex, routerPath);
     
     // If no path found or time is infinite
-    if (time < 0.0) {
+    if (time < 0.0 || routerPath.empty()) {
         return CPathRouter::NoPathExists;
     }
     
-    // Convert router path (vertex IDs) to trip steps
     auto StreetMap = DImplementation->Config->StreetMap();
+    auto BusSystem = DImplementation->Config->BusSystem();
     
-    // Process each node in the path
-    for (size_t i = 0; i < routerPath.size(); ++i) {
-        auto currentNodeID = DImplementation->TimeVertexIDToNodeID[routerPath[i]];
+    // Convert router path to node IDs
+    std::vector<TNodeID> nodePath;
+    for (const auto& vertex : routerPath) {
+        nodePath.push_back(DImplementation->TimeVertexIDToNodeID[vertex]);
+    }
+    
+    // Now determine the optimal transportation mode for each segment
+    for (size_t i = 0; i < nodePath.size(); ++i) {
+        auto currentNodeID = nodePath[i];
         
-        // Determine transportation mode (default to Walk)
-        ETransportationMode mode = ETransportationMode::Walk;
+        // For the first node, always start by walking
+        if (i == 0) {
+            path.push_back({ETransportationMode::Walk, currentNodeID});
+            continue;
+        }
         
-        // If not at the first node, determine the mode based on the previous node
-        if (i > 0) {
-            auto prevNodeID = DImplementation->TimeVertexIDToNodeID[routerPath[i-1]];
-            auto prevNode = StreetMap->NodeByID(prevNodeID);
-            auto currentNode = StreetMap->NodeByID(currentNodeID);
-            
-            // Check if there's a bus route between these nodes
-            std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prevNodeID, currentNodeID);
-            if (!busRoute.empty()) {
-                mode = ETransportationMode::Bus;
-            } 
-            // Check if biking is faster than walking
-            else {
-                double distance = SGeographicUtils::HaversineDistanceInMiles(
-                    prevNode->Location(), currentNode->Location());
-                
-                double walkTime = distance / DImplementation->Config->WalkSpeed();
-                double bikeTime = distance / DImplementation->Config->BikeSpeed();
-                
-                if (bikeTime < walkTime) {
-                    mode = ETransportationMode::Bike;
-                }
-            }
+        auto prevNodeID = nodePath[i-1];
+        auto prevNode = StreetMap->NodeByID(prevNodeID);
+        auto currentNode = StreetMap->NodeByID(currentNodeID);
+        
+        if (!prevNode || !currentNode) {
+            continue;
+        }
+        
+        // Calculate the distance between nodes
+        double distance = SGeographicUtils::HaversineDistanceInMiles(
+            prevNode->Location(), currentNode->Location());
+        
+        // Check if there's a bus route between these nodes
+        std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prevNodeID, currentNodeID);
+        
+        // Determine the fastest mode of transportation for this segment
+        ETransportationMode bestMode = ETransportationMode::Walk;
+        double walkTime = distance / DImplementation->Config->WalkSpeed();
+        double bikeTime = distance / DImplementation->Config->BikeSpeed();
+        double busTime = std::numeric_limits<double>::max();
+        
+        if (!busRoute.empty() && 
+            DImplementation->NodeIDToStopID.find(prevNodeID) != DImplementation->NodeIDToStopID.end() &&
+            DImplementation->NodeIDToStopID.find(currentNodeID) != DImplementation->NodeIDToStopID.end()) {
+            // Calculate bus time including stop time
+            busTime = distance / DImplementation->Config->DefaultSpeedLimit() + DImplementation->Config->BusStopTime();
+        }
+        
+        // Determine the fastest mode
+        if (busTime < walkTime && busTime < bikeTime) {
+            bestMode = ETransportationMode::Bus;
+        } else if (bikeTime < walkTime) {
+            bestMode = ETransportationMode::Bike;
         }
         
         // Add this step to the path
-        path.push_back({mode, currentNodeID});
+        path.push_back({bestMode, currentNodeID});
     }
     
     // Optimize the path by combining consecutive steps with the same transportation mode
-    // This needs to remain for each node to keep the nodes in the correct order
     if (path.size() > 1) {
+        std::vector<TTripStep> optimizedPath;
+        optimizedPath.push_back(path[0]);
+        
         for (size_t i = 1; i < path.size(); ++i) {
-            if (i < path.size() && path[i].first == path[i-1].first) {
-                path[i-1].second = path[i].second;
-                path.erase(path.begin() + i);
-                --i; // Adjust index after erasure
+            if (path[i].first == optimizedPath.back().first) {
+                // Same mode, update the destination
+                optimizedPath.back().second = path[i].second;
+            } else {
+                // Different mode, add a new step
+                optimizedPath.push_back(path[i]);
             }
         }
+        
+        path = optimizedPath;
     }
     
     return time;
