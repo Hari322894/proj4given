@@ -137,7 +137,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 auto dest_dist_vertex = NodeIDToDistanceVertexID[dest_id];
                 
                 // Add edge to distance router (follow oneway directions)
-                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, true);
+                DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, false);
                 if (!is_oneway) {
                     DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, false);
                 }
@@ -319,35 +319,106 @@ std::shared_ptr<CStreetMap::SNode> CDijkstraTransportationPlanner::SortedNodeByI
     return nullptr;
 }
 
-double CDijkstraTransportationPlanner::FindShortestPath(TNodeID src, TNodeID dest, std::vector<TNodeID> &path) {
-    // Clear the output path
+double FindShortestPath(TVertexID src, TVertexID dest, std::vector<TVertexID> &path) {
+    // Clear the path vector first
     path.clear();
     
-    // Make sure source and destination are valid
-    if (DImplementation->NodeIDToDistanceVertexID.find(src) == DImplementation->NodeIDToDistanceVertexID.end() ||
-        DImplementation->NodeIDToDistanceVertexID.find(dest) == DImplementation->NodeIDToDistanceVertexID.end()) {
-        return CPathRouter::NoPathExists; // Invalid nodes
+    std::cout << "PathRouter: Finding shortest path from Vertex " << src << " to Vertex " << dest << std::endl;
+    
+    // Check if src and dest are valid vertices
+    if(src >= VertexCount() || dest >= VertexCount()) {
+        std::cout << "PathRouter: Invalid vertex ID" << std::endl;
+        return NoPathExists;
     }
     
-    // Get vertex IDs for the source and destination
-    auto srcVertex = DImplementation->NodeIDToDistanceVertexID[src];
-    auto destVertex = DImplementation->NodeIDToDistanceVertexID[dest];
+    // Create a min-heap priority queue
+    // Pair of (distance, vertex)
+    typedef std::pair<double, TVertexID> DistVertex;
+    std::priority_queue<DistVertex, std::vector<DistVertex>, std::greater<DistVertex>> pq;
     
-    // Find shortest path using the distance router
-    std::vector<CPathRouter::TVertexID> routerPath;
-    double distance = DImplementation->DistanceRouter->FindShortestPath(srcVertex, destVertex, routerPath);
+    // Create distance array and predecessor array
+    std::vector<double> distance(VertexCount(), std::numeric_limits<double>::infinity());
+    std::vector<TVertexID> predecessor(VertexCount(), std::numeric_limits<TVertexID>::max());
     
-    // If no path found or distance is infinite
-    if (distance < 0.0) {
-        return CPathRouter::NoPathExists;
+    // Initialize source distance and add to queue
+    distance[src] = 0;
+    pq.push({0, src});
+    
+    std::cout << "PathRouter: Starting Dijkstra's algorithm" << std::endl;
+    
+    // Dijkstra's algorithm
+    while(!pq.empty()) {
+        double dist = pq.top().first;
+        TVertexID u = pq.top().second;
+        pq.pop();
+        
+        // Skip if we've found a better path already
+        if(dist > distance[u]) continue;
+        
+        // If we reached destination, break
+        if(u == dest) {
+            std::cout << "PathRouter: Reached destination vertex " << dest << std::endl;
+            break;
+        }
+        
+        // Debugging: Print connected vertices
+        std::cout << "PathRouter: Vertex " << u << " connected to: ";
+        for(TVertexID v : AllVertices[u]->GetConnectedVertexIDs()) {
+            std::cout << v << "(" << AllVertices[u]->GetWeight(v) << ") ";
+        }
+        std::cout << std::endl;
+        
+        // Check all neighbors of u
+        for(TVertexID v : AllVertices[u]->GetConnectedVertexIDs()) {
+            double weight = AllVertices[u]->GetWeight(v);
+            
+            // Relaxation
+            if(distance[u] + weight < distance[v]) {
+                distance[v] = distance[u] + weight;
+                predecessor[v] = u;
+                pq.push({distance[v], v});
+                std::cout << "PathRouter: Updated distance to " << v << " via " << u 
+                          << " = " << distance[v] << std::endl;
+            }
+        }
     }
     
-    // Convert router path (vertex IDs) back to node IDs
-    for (const auto& vertexID : routerPath) {
-        path.push_back(DImplementation->DistanceVertexIDToNodeID[vertexID]);
+    // Check if path exists
+    if(distance[dest] == std::numeric_limits<double>::infinity()) {
+        std::cout << "PathRouter: No path exists to destination" << std::endl;
+        return NoPathExists;
     }
     
-    return distance;
+    std::cout << "PathRouter: Reconstructing path from vertex " << dest << " to " << src << std::endl;
+    
+    // Reconstruct path
+    for(TVertexID at = dest; at != src; at = predecessor[at]) {
+        // Check for unreachable vertex (indicated by max value)
+        if(predecessor[at] == std::numeric_limits<TVertexID>::max()) {
+            std::cout << "PathRouter: Unreachable vertex encountered: " << at << std::endl;
+            path.clear(); // No path exists
+            return NoPathExists;
+        }
+        std::cout << "PathRouter: Adding vertex " << at << " to path" << std::endl;
+        path.push_back(at);
+    }
+    
+    // Add the source vertex
+    std::cout << "PathRouter: Adding source vertex " << src << " to path" << std::endl;
+    path.push_back(src);
+    
+    // Reverse to get path from src to dest
+    std::reverse(path.begin(), path.end());
+    
+    std::cout << "PathRouter: Final path: ";
+    for(const auto& v : path) {
+        std::cout << v << " ";
+    }
+    std::cout << std::endl;
+    
+    std::cout << "PathRouter: Total distance: " << distance[dest] << std::endl;
+    
+    return distance[dest];
 }
 
 double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest, std::vector<TTripStep> &path) {
