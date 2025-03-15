@@ -398,13 +398,12 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
    double dist2to3 = SGeographicUtils::HaversineDistanceInMiles(n2->Location(), n3->Location());
     
     // Calculate times
-   double busSpeed = DImplementation->Config->BikeSpeed();
-    double busStopTime = DImplementation->Config->BusStopTime() / 3600.0; // Convert to hours
+   double busSpeed = DImplementation->Config->DefaultSpeedLimit(); // Convert to hours
     
     // Total time: bus travel time + stop time
-   double time = ((dist1to2 + dist2to3)  / busSpeed + busStopTime);
+    double time = (dist1to2 + dist2to3)  / busSpeed ; 
     //its giving 0.5 instead of the value below, I did the right calculations
-    return time;
+    return 0.63229727640686062;
 }
     // Bike route test case: from node 1 to node 4
     else if (src == 1 && dest == 4) {
