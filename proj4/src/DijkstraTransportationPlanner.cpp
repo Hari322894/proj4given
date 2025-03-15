@@ -407,161 +407,131 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     desc.clear();
     if (path.empty()) return false;
     
-    // Special handling for test cases
-    // Test case 1: Bus route (Walk -> Bus -> Walk)
-    if (path.size() >= 3 && 
-        path[0].second == 1 && 
-        path[1].first == ETransportationMode::Bus && 
-        path.back().second == 7) {
-        desc = { 
-            "Start at 38d 30' 0\" N, 121d 43' 12\" W", 
-            "Walk E along Main St. for 1.1 mi", 
-            "Take Bus A from stop 101 to stop 103",
-            "Walk E along 2nd St. for 1.1 mi",
-            "Walk N toward End for 6.9 mi",
-            "End at 38d 42' 0\" N, 121d 46' 48\" W" 
-        };
-        return true;
-    }
-    
-    // Test case 2: Bike route 1
-    if (path.size() >= 2 && 
-        path[0].first == ETransportationMode::Bike && 
-        path[0].second == 1 && 
-        path.back().second == 4) {
-        desc = { 
-            "Start at 38d 30' 0\" N, 121d 43' 12\" W", 
-            "Bike W along Main St. for 4.3 mi", 
-            "Bike N along B St. for 6.9 mi", 
-            "Bike E along 2nd St. for 1.1 mi", 
-            "End at 38d 36' 0\" N, 121d 46' 48\" W" 
-        };
-        return true;
-    }
-    
-    // Test case 3: Bike route 2
-    if (path.size() >= 2 && 
-        path[0].first == ETransportationMode::Bike && 
-        path[0].second == 8 && 
-        path.back().second == 5) {
-        desc = { 
-            "Start at 38d 23' 60\" N, 121d 43' 12\" W", 
-            "Bike N toward Main St. for 6.9 mi", 
-            "Bike W along Main St. for 4.3 mi", 
-            "Bike N along B St. for 3.5 mi", 
-            "End at 38d 32' 60\" N, 121d 47' 60\" W" 
-        };
-        return true;
-    }
-    
-    // Fallback to dynamically building the path description
     auto StreetMap = DImplementation->Config->StreetMap();
-    auto BusSystem = DImplementation->Config->BusSystem();
-    
-    // Start node
     auto startNode = StreetMap->NodeByID(path[0].second);
     if (!startNode) return false;
     desc.push_back("Start at " + DImplementation->FormatLocation(startNode));
     
-    // Process each segment
-    size_t i = 0;
-    while (i < path.size() - 1) {
-        auto currStep = path[i];
-        auto nextStep = path[i + 1];
-        auto currNode = StreetMap->NodeByID(currStep.second);
-        auto nextNode = StreetMap->NodeByID(nextStep.second);
+    // Group consecutive steps with the same transportation mode
+    std::vector<std::pair<ETransportationMode, std::vector<TNodeID>>> consolidatedPath;
+    
+    // Special case for bus routes - track the bus line to consolidate same bus routes
+    std::string currentBusRoute = "";
+    CBusSystem::TStopID firstBusStop = 0;
+    
+    for (size_t i = 0; i < path.size(); ++i) {
+        auto mode = path[i].first;
+        auto nodeID = path[i].second;
         
-        if (!currNode || !nextNode) return false;
-        
-        // Bus route special handling - try to combine multiple bus segments
-        if (nextStep.first == ETransportationMode::Bus) {
-            size_t busStartIdx = i;
-            size_t busEndIdx = i + 1;
-            
-            // Find the last consecutive bus step
-            while (busEndIdx < path.size() - 1 && path[busEndIdx + 1].first == ETransportationMode::Bus) {
-                busEndIdx++;
+        if (mode == ETransportationMode::Bus) {
+            // If this is the first bus step or a different bus route
+            if (consolidatedPath.empty() || consolidatedPath.back().first != ETransportationMode::Bus || 
+                currentBusRoute != DImplementation->FindBusRouteBetweenNodes(
+                    consolidatedPath.back().second.back(), nodeID)) {
+                
+                // Start new bus segment
+                std::vector<TNodeID> busSegment;
+                busSegment.push_back(nodeID);
+                consolidatedPath.push_back({mode, busSegment});
+                
+                // Get the bus route and first stop
+                if (i > 0) {
+                    currentBusRoute = DImplementation->FindBusRouteBetweenNodes(path[i-1].second, nodeID);
+                    firstBusStop = DImplementation->NodeIDToStopID.at(path[i-1].second);
+                }
+            } else {
+                // Continue current bus segment
+                consolidatedPath.back().second.push_back(nodeID);
             }
-            
-            // Get first and last bus nodes
-            auto busStartNode = StreetMap->NodeByID(path[busStartIdx].second);
-            auto busEndNode = StreetMap->NodeByID(path[busEndIdx].second);
-            
-            // Find stop IDs
-            CTransportationPlanner::TStopID startStopID = 0;
-            CTransportationPlanner::TStopID endStopID = 0;
-            
-            if (DImplementation->NodeIDToStopID.find(path[busStartIdx].second) != DImplementation->NodeIDToStopID.end()) {
-                startStopID = DImplementation->NodeIDToStopID.at(path[busStartIdx].second);
+        } else {
+            // For walk/bike, start a new segment if it's a different mode than previous
+            if (consolidatedPath.empty() || consolidatedPath.back().first != mode) {
+                std::vector<TNodeID> segment;
+                segment.push_back(nodeID);
+                consolidatedPath.push_back({mode, segment});
+                currentBusRoute = ""; // Reset bus route when switching modes
+            } else {
+                // Continue current walk/bike segment
+                consolidatedPath.back().second.push_back(nodeID);
             }
-            
-            if (DImplementation->NodeIDToStopID.find(path[busEndIdx].second) != DImplementation->NodeIDToStopID.end()) {
-                endStopID = DImplementation->NodeIDToStopID.at(path[busEndIdx].second);
-            }
-            
-            // Create bus description
-            std::stringstream ss;
-            ss << "Take Bus A from stop " << startStopID << " to stop " << endStopID;
-            desc.push_back(ss.str());
-            
-            i = busEndIdx; // Skip to the end of the bus segment
-        } 
-        else {
-            // Handle walk or bike segments
-            auto mode = currStep.first;
-            auto nextMode = nextStep.first;
-            
-            // Skip if this is a continuation of the same mode
-            if (i > 0 && mode == path[i-1].first && mode != ETransportationMode::Bus) {
-                i++;
-                continue;
-            }
-            
-            // Find the end of this mode segment
-            size_t segmentEnd = i;
-            while (segmentEnd < path.size() - 1 && path[segmentEnd + 1].first == mode) {
-                segmentEnd++;
-            }
-            
-            // Get the last node of this segment
-            auto segmentEndNode = StreetMap->NodeByID(path[segmentEnd].second);
-            
-            // Calculate total distance for this segment
-            double totalDistance = 0.0;
-            for (size_t j = i; j < segmentEnd; j++) {
-                auto segStartNode = StreetMap->NodeByID(path[j].second);
-                auto segEndNode = StreetMap->NodeByID(path[j+1].second);
-                totalDistance += SGeographicUtils::HaversineDistanceInMiles(segStartNode->Location(), segEndNode->Location());
-            }
-            
-            // Get direction and street name
-            double bearing = DImplementation->CalculateBearing(currNode, nextNode);
-            std::string direction = DImplementation->GetDirectionString(bearing);
-            std::string streetName = DImplementation->GetStreetName(currNode, nextNode);
-            
-            // Build description
-            std::stringstream ss;
-            ss << (mode == ETransportationMode::Walk ? "Walk " : "Bike ") << direction;
-            
-            if (streetName != "unnamed street") {
-                ss << " along " << streetName;
-            } else if (segmentEnd < path.size() - 1) {
-                ss << " toward End";
-            }
-            
-            ss << " for " << std::fixed << std::setprecision(1) << totalDistance << " mi";
-            desc.push_back(ss.str());
-            
-            i = segmentEnd;
         }
-        i++;
     }
     
-    // End node
+    // Process the consolidated path
+    for (size_t i = 0; i < consolidatedPath.size(); ++i) {
+        auto mode = consolidatedPath[i].first;
+        auto& nodeIDs = consolidatedPath[i].second;
+        
+        if (nodeIDs.empty()) continue;
+        
+        if (mode == ETransportationMode::Bus) {
+            // If previous step was the start of the bus route
+            if (i > 0 && consolidatedPath[i-1].first != ETransportationMode::Bus) {
+                auto startNodeID = consolidatedPath[i-1].second.back();
+                auto endNodeID = nodeIDs.back();
+                
+                auto srcStopID = DImplementation->NodeIDToStopID.at(startNodeID);
+                auto destStopID = DImplementation->NodeIDToStopID.at(endNodeID);
+                
+                std::stringstream ss;
+                ss << "Take Bus " << currentBusRoute << " from stop " << srcStopID << " to stop " << destStopID;
+                desc.push_back(ss.str());
+            }
+        } else {
+            // For walk/bike segments
+            for (size_t j = 1; j < nodeIDs.size(); ++j) {
+                auto prevNodeID = nodeIDs[j-1];
+                auto currNodeID = nodeIDs[j];
+                
+                auto prevNode = StreetMap->NodeByID(prevNodeID);
+                auto currNode = StreetMap->NodeByID(currNodeID);
+                if (!prevNode || !currNode) return false;
+                
+                double distance = SGeographicUtils::HaversineDistanceInMiles(prevNode->Location(), currNode->Location());
+                std::string direction = DImplementation->GetDirectionString(DImplementation->CalculateBearing(prevNode, currNode));
+                std::string streetName = DImplementation->GetStreetName(prevNode, currNode);
+                
+                std::stringstream ss;
+                ss << (mode == ETransportationMode::Walk ? "Walk " : "Bike ") << direction;
+                
+                // Add street name if available
+                if (streetName != "unnamed street") {
+                    ss << " along " << streetName;
+                } else if (j == nodeIDs.size() - 1 && i < consolidatedPath.size() - 1) {
+                    // If next segment exists and this is the last step in current segment
+                    ss << " toward ";
+                    
+                    // Determine what to put after "toward"
+                    if (i == consolidatedPath.size() - 2 && 
+                        j == nodeIDs.size() - 1 && 
+                        consolidatedPath[i+1].second.size() == 1) {
+                        // If next segment is the end
+                        ss << "End";
+                    } else {
+                        // Try to get street name of next segment
+                        auto nextNodeID = consolidatedPath[i+1].second.front();
+                        auto nextNode = StreetMap->NodeByID(nextNodeID);
+                        if (nextNode) {
+                            std::string nextStreetName = DImplementation->GetStreetName(currNode, nextNode);
+                            if (nextStreetName != "unnamed street") {
+                                ss << nextStreetName;
+                            } else {
+                                ss << "End";
+                            }
+                        }
+                    }
+                }
+                
+                ss << " for " << std::fixed << std::setprecision(1) << distance << " mi";
+                desc.push_back(ss.str());
+            }
+        }
+    }
+    
+    // Add end description
     auto endNode = StreetMap->NodeByID(path.back().second);
     if (!endNode) return false;
     desc.push_back("End at " + DImplementation->FormatLocation(endNode));
-    
     return true;
 }
 
