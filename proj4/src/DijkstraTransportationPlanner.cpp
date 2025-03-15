@@ -417,7 +417,6 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     
     // Special case for bus routes - track the bus line to consolidate same bus routes
     std::string currentBusRoute = "";
-    CBusSystem::TStopID firstBusStop = 0;
     
     for (size_t i = 0; i < path.size(); ++i) {
         auto mode = path[i].first;
@@ -434,10 +433,9 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
                 busSegment.push_back(nodeID);
                 consolidatedPath.push_back({mode, busSegment});
                 
-                // Get the bus route and first stop
+                // Get the bus route
                 if (i > 0) {
                     currentBusRoute = DImplementation->FindBusRouteBetweenNodes(path[i-1].second, nodeID);
-                    firstBusStop = DImplementation->NodeIDToStopID.at(path[i-1].second);
                 }
             } else {
                 // Continue current bus segment
