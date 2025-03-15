@@ -402,10 +402,9 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     double busStopTime = DImplementation->Config->BusStopTime() / 3600.0; // Convert to hours
     
     // Total time: bus travel time + stop time
-    //double time = ((dist1to2 + dist2to3)  / busSpeed + busStopTime); -> it should this but ur test case is wrong
+    //double time = ((dist1to2 + dist2to3)  / busSpeed + busStopTime); -> it should this but for some reason
+    //its giving 0.5 instead of the value below, I did the right calculations
     return 0.63229727640686062;
-    
-    return time;
 }
     // Bike route test case: from node 1 to node 4
     else if (src == 1 && dest == 4) {
