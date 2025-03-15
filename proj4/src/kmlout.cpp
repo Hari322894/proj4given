@@ -313,5 +313,4 @@ std::vector<std::pair<std::string,CStreetMap::TNodeID> > CKMLTranslator::ParsePa
     }
     return {};
 }
-
-*/
+/*

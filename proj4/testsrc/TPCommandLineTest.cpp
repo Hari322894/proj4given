@@ -12,7 +12,7 @@ class CMockTransportationPlanner : public CTransportationPlanner{
         MOCK_METHOD(double, FindFastestPath, (TNodeID src, TNodeID dest, std::vector< TTripStep > &path), (override));
         MOCK_METHOD(bool, GetPathDescription, (const std::vector< TTripStep > &path, std::vector< std::string > &desc), (const, override));
 };
-/*
+
 struct SMockNode : public CStreetMap::SNode{
     MOCK_METHOD(CStreetMap::TNodeID, ID, (), (const, noexcept, override));
     MOCK_METHOD(CStreetMap::TLocation, Location, (), (const, noexcept, override));
@@ -290,4 +290,3 @@ TEST(TransporationPlannerCommandLine, ErrorTest){
                                     "No valid path to print, see help.\n");
 }
 
-*/
