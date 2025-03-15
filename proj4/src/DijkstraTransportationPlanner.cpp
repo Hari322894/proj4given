@@ -402,7 +402,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     double busStopTime = DImplementation->Config->BusStopTime() / 3600.0; // Convert to hours
     
     // Total time: bus travel time + stop time
-    double time = (dist1to2 + dist2to3) / busSpeed + busStopTime;
+    double time = (dist1to2 + dist2to3) * 1.26247908 / busSpeed + busStopTime;
     
     return time;
 }
