@@ -1,33 +1,45 @@
-#include "DijkstraTransportationPlanner.h"
-#include "DijkstraPathRouter.h"
-#include "GeographicUtils.h"
-#include <queue>
-#include <unordered_map>
-#include <set>
-#include <cmath>
-#include <algorithm>
-#include <sstream>
-#include <iomanip>
+#include "DijkstraTransportationPlanner.h" // including header file for CDijkstraTransportationPlanner class usage
+#include "DijkstraPathRouter.h" // including header file for CDijkstraPathRouter class usage
+#include "GeographicUtils.h"// including header file for SGeographicUtils class usage
+#include <queue>//used for priority_queue
+#include <unordered_map>//  used for unordered_map
+#include <set>//used for set
+#include <cmath>//used for sqrt
+#include <algorithm>//used for sort
+#include <sstream>// used for stringstream
+#include <iomanip>//used for setprecision
 
 struct CDijkstraTransportationPlanner::SImplementation {
+    // shared pointer to configuration
     std::shared_ptr<SConfiguration> Config;
+    // vector of sorted nodes
     std::vector<std::shared_ptr<CStreetMap::SNode>> SortedNodes;
+    // shared pointer to distance router
     std::shared_ptr<CDijkstraPathRouter> DistanceRouter;
+    // shared pointer to time router
     std::shared_ptr<CDijkstraPathRouter> TimeRouter;
+    // unordered map of node ID to distance vertex ID
     std::unordered_map<CStreetMap::TNodeID, CPathRouter::TVertexID> NodeIDToDistanceVertexID;
+    // unordered map of node ID to time vertex ID
     std::unordered_map<CStreetMap::TNodeID, CPathRouter::TVertexID> NodeIDToTimeVertexID;
+    // unordered map of distance vertex ID to node ID
     std::unordered_map<CPathRouter::TVertexID, CStreetMap::TNodeID> DistanceVertexIDToNodeID;
+    //  unordered map of time vertex ID to node ID
     std::unordered_map<CPathRouter::TVertexID, CStreetMap::TNodeID> TimeVertexIDToNodeID;
+    // unordered map of node ID to index
     std::unordered_map<CStreetMap::TNodeID, size_t> NodeIDToIndex;
+    //  unordered map of stop ID to node ID
     std::unordered_map<CBusSystem::TStopID, CStreetMap::TNodeID> StopIDToNodeID;
+    // unordered map of stop ID to stop name
     std::unordered_map<CBusSystem::TStopID, std::string> StopIDToStopName;
     // If more than one stop is on a node, choose the one with the smallest stop ID.
     std::unordered_map<CStreetMap::TNodeID, CBusSystem::TStopID> NodeIDToStopID;
+    // unordered map of node ID to stop ID
     std::unordered_map<CStreetMap::TNodeID, std::set<std::pair<std::string, CStreetMap::TNodeID>>> BusRouteInfo;
-    
+    // constructor
     SImplementation(std::shared_ptr<SConfiguration> config)
         : Config(config) {
-        
+    // shared pointer to street map  
         auto StreetMap = Config->StreetMap();
         auto BusSystem = Config->BusSystem();
         
@@ -40,10 +52,12 @@ struct CDijkstraTransportationPlanner::SImplementation {
             auto node = StreetMap->NodeByIndex(i);
             SortedNodes.push_back(node);
         }
+        // sort the nodes
         std::sort(SortedNodes.begin(), SortedNodes.end(),
             [](const std::shared_ptr<CStreetMap::SNode>& a, const std::shared_ptr<CStreetMap::SNode>& b) {
                 return a->ID() < b->ID();
             });
+            //  map node ID to index
         for (size_t i = 0; i < SortedNodes.size(); ++i) {
             NodeIDToIndex[SortedNodes[i]->ID()] = i;
         }
@@ -84,7 +98,7 @@ struct CDijkstraTransportationPlanner::SImplementation {
             }
         }
         
-        // --- First, process multi-node ways (node count > 2)
+        // first, process multi-node ways (node count > 2)
         for (size_t i = 0; i < StreetMap->WayCount(); ++i) {
             auto way = StreetMap->WayByIndex(i);
             if (way->NodeCount() <= 2)
@@ -95,31 +109,35 @@ struct CDijkstraTransportationPlanner::SImplementation {
                 std::string oneway = way->GetAttribute("oneway");
                 is_oneway = (oneway == "yes" || oneway == "true" || oneway == "1");
             }
-            
+            // iterate through the nodes
             for (size_t j = 1; j < way->NodeCount(); ++j) {
                 auto src_id = way->GetNodeID(j - 1);
                 auto dest_id = way->GetNodeID(j);
                 if (src_id == CStreetMap::InvalidNodeID || dest_id == CStreetMap::InvalidNodeID)
                     continue;
+                // get the source and destination nodes
                 auto src_node = StreetMap->NodeByID(src_id);
                 auto dest_node = StreetMap->NodeByID(dest_id);
                 if (!src_node || !dest_node)
                     continue;
+                    // get the distance between the nodes
                 double distance = SGeographicUtils::HaversineDistanceInMiles(src_node->Location(), dest_node->Location());
                 if (distance <= 0.0)
                     continue;
-                
+                // get the distance vertex ID
                 auto src_dist_vertex = NodeIDToDistanceVertexID[src_id];
                 auto dest_dist_vertex = NodeIDToDistanceVertexID[dest_id];
                 DistanceRouter->AddEdge(src_dist_vertex, dest_dist_vertex, distance, false);
                 if (!is_oneway)
                     DistanceRouter->AddEdge(dest_dist_vertex, src_dist_vertex, distance, false);
-                
+                // get the time vertex ID
                 auto src_time_vertex = NodeIDToTimeVertexID[src_id];
                 auto dest_time_vertex = NodeIDToTimeVertexID[dest_id];
+                // get the walk time
                 double walk_time = distance / Config->WalkSpeed();
                 TimeRouter->AddEdge(src_time_vertex, dest_time_vertex, walk_time, false);
                 TimeRouter->AddEdge(dest_time_vertex, src_time_vertex, walk_time, false);
+                // get the bike time
                 double bike_time = distance / Config->BikeSpeed();
                 TimeRouter->AddEdge(src_time_vertex, dest_time_vertex, bike_time, false);
                 if (!is_oneway)
@@ -132,7 +150,10 @@ struct CDijkstraTransportationPlanner::SImplementation {
                         if (spacePos != std::string::npos)
                             maxspeed = maxspeed.substr(0, spacePos);
                         speed_limit = std::stod(maxspeed);
-                    } catch (...) { }
+                    } catch(const std::exception& e) {
+                        std::cerr << "Error parsing maxspeed: " << e.what() << std::endl;
+                        speed_limit = Config->DefaultSpeedLimit();
+                    }
                 }
                 double drive_time = distance / speed_limit;
                 TimeRouter->AddEdge(src_time_vertex, dest_time_vertex, drive_time, false);
