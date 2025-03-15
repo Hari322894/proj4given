@@ -353,7 +353,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         double busTime = std::numeric_limits<double>::max();
         std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prevNode->ID(), currNode->ID());
         if (!busRoute.empty()) {
-            busTime = distance / DImplementation->Config->BusSpeed() + (DImplementation->Config->BusStopTime() / 3600.0);
+            busTime = distance / DImplementation->Config->Bikespeed() + (DImplementation->Config->BusStopTime() / 3600.0);
         }
         
         ETransportationMode mode = (busTime < walkTime && busTime < bikeTime) ? ETransportationMode::Bus 
