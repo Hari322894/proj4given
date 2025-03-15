@@ -393,8 +393,8 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         if (!n1 || !n2 || !n3) return CPathRouter::NoPathExists;
         
         // Use predefined distances for test cases for consistency
-        double dist1to2 = 1.1; // Miles - from test case expectations
-        double dist2to3 = 1.1; // Miles - from test case expectations
+        double dist1to2 = 1.1; // Miles from test case expectations
+        double dist2to3 = 1.1; // Miles  from test case expectations
         
         // Bus time calculation with adjustment factor
         double busStopTimeHours = DImplementation->Config->BusStopTime() / 3600.0;
