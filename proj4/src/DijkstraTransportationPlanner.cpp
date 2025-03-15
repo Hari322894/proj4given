@@ -211,7 +211,10 @@ struct CDijkstraTransportationPlanner::SImplementation {
                     if (spacePos != std::string::npos)
                         maxspeed = maxspeed.substr(0, spacePos);
                     speed_limit = std::stod(maxspeed);
-                } catch (...) { }
+                } catch(const std::exception& e) {
+                    std::cerr << "Error parsing maxspeed: " << e.what() << std::endl;
+                    speed_limit = Config->DefaultSpeedLimit();
+                }
             }
             double drive_time = distance / speed_limit;
             TimeRouter->AddEdge(src_time_vertex, dest_time_vertex, drive_time, false);
