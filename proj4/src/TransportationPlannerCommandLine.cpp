@@ -4,7 +4,7 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
-
+// Implementation of the command line interface for the transportation planner
 struct CTransportationPlannerCommandLine::SImplementation {
     std::shared_ptr<CDataSource> DCommandSource;
     std::shared_ptr<CDataSink> DOutputSink;
@@ -20,7 +20,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
     std::vector<CTransportationPlanner::TTripStep> DFastestPath;
     std::vector<CTransportationPlanner::TNodeID> DShortestPath;
     bool DIsShortestPath;
-    
+    // Constructor
     SImplementation(std::shared_ptr<CDataSource> cmdsrc, 
                    std::shared_ptr<CDataSink> outsink, 
                    std::shared_ptr<CDataSink> errsink, 
@@ -30,11 +30,11 @@ struct CTransportationPlannerCommandLine::SImplementation {
           DResultsFactory(results), DPlanner(planner), DPathValid(false), 
           DIsShortestPath(false) {
     }
-    
+    // Process commands
     bool ProcessCommands() {
         std::string Command, Line;
         std::vector<char> Buffer(1024);
-        
+      // Read command source  
         while(DCommandSource->Read(Buffer, 1024)) {
             Line.assign(Buffer.begin(), Buffer.end());
             std::stringstream LineStream(Line);
@@ -45,22 +45,27 @@ struct CTransportationPlannerCommandLine::SImplementation {
             
             // Get the command
             LineStream >> Command;
-            
+      // Check for exit command      
             if(Command == "exit") {
                 return true;
             }
+            // chech for help
             else if(Command == "help") {
                 HandleHelpCommand();
             }
+            // check for count
             else if(Command == "count") {
                 HandleCountCommand();
             }
+            // check for node
             else if(Command == "node") {
                 HandleNodeCommand(LineStream);
             }
+            //check for shortest
             else if(Command == "shortest") {
                 HandleShortestCommand(LineStream);
             }
+            //check for fastest and shortest
             else if(Command == "fastest") {
                 HandleFastestCommand(LineStream);
             }
@@ -77,7 +82,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
         
         return true;
     }
-    
+    // Handle save command
     void HandleHelpCommand() {
         DOutputSink->Write(GetVectorFromString("------------------------------------------------------------------------\n"));
         DOutputSink->Write(GetVectorFromString("help     Display this help menu\n"));
@@ -92,12 +97,12 @@ struct CTransportationPlannerCommandLine::SImplementation {
         DOutputSink->Write(GetVectorFromString("save     Saves the last calculated path to file\n"));
         DOutputSink->Write(GetVectorFromString("print    Prints the steps for the last calculated path\n"));
     }
-    
+    // Handle save command
     void HandleCountCommand() {
         size_t NodeCount = DPlanner->NodeCount();
         DOutputSink->Write(GetVectorFromString(std::to_string(NodeCount) + " nodes\n"));
     }
-    
+    // Handle node command
     void HandleNodeCommand(std::stringstream &lineStream) {
         int NodeIndex;
         
@@ -110,7 +115,7 @@ struct CTransportationPlannerCommandLine::SImplementation {
             DErrorSink->Write(GetVectorFromString("Invalid node parameter, see help.\n"));
             return;
         }
-        
+        // get the node
         auto Node = DPlanner->SortedNodeByIndex(NodeIndex);
         auto Location = Node->Location();
         double Latitude = Location.first;
@@ -120,25 +125,25 @@ struct CTransportationPlannerCommandLine::SImplementation {
         int LatDegrees = static_cast<int>(Latitude);
         int LatMinutes = static_cast<int>((Latitude - LatDegrees) * 60);
         int LatSeconds = static_cast<int>(((Latitude - LatDegrees) * 60 - LatMinutes) * 60);
-        
+        // get the direction
         int LongDegrees = static_cast<int>(std::abs(Longitude));
         int LongMinutes = static_cast<int>((std::abs(Longitude) - LongDegrees) * 60);
         int LongSeconds = static_cast<int>(((std::abs(Longitude) - LongDegrees) * 60 - LongMinutes) * 60);
-        
+        // get the direction
         std::string LatDirection = Latitude >= 0 ? "N" : "S";
         std::string LongDirection = Longitude >= 0 ? "E" : "W";
-        
+        // format the output
         std::stringstream OutputString;
         OutputString << "Node " << NodeIndex << ": id = " << Node->ID() 
                      << " is at " << std::abs(LatDegrees) << "d " << LatMinutes << "' " << LatSeconds << "\" " << LatDirection
                      << ", " << LongDegrees << "d " << LongMinutes << "' " << LongSeconds << "\" " << LongDirection << "\n";
-        
+        // write the output
         DOutputSink->Write(GetVectorFromString(OutputString.str()));
     }
-    
+    // Handle shortest command
     void HandleShortestCommand(std::stringstream &lineStream) {
         CTransportationPlanner::TNodeID SourceID, DestinationID;
-        
+     // get the source and destination node ids   
         if(!(lineStream >> SourceID >> DestinationID)) {
             DErrorSink->Write(GetVectorFromString("Invalid shortest command, see help.\n"));
             return;
@@ -217,13 +222,13 @@ struct CTransportationPlannerCommandLine::SImplementation {
             DOutputSink->Write(GetVectorFromString(TimeStr.str()));
         }
     }
-    
+    // Handle save command
     void HandleSaveCommand() {
         if(!DPathValid) {
             DErrorSink->Write(GetVectorFromString("No valid path to save, see help.\n"));
             return;
         }
-        
+        //  save the path
         std::string Filename = std::to_string(DPathSourceID) + "_" + 
                               std::to_string(DPathDestinationID) + "_" + 
                               std::to_string(DPathTime) + 
@@ -292,12 +297,12 @@ struct CTransportationPlannerCommandLine::SImplementation {
             }
         }
     }
-
+// Get vector from string
     std::vector<char> GetVectorFromString(const std::string &str) {
         return std::vector<char>(str.begin(), str.end());
     }
 };
-
+// Constructor
 CTransportationPlannerCommandLine::CTransportationPlannerCommandLine(
     std::shared_ptr<CDataSource> cmdsrc, 
     std::shared_ptr<CDataSink> outsink, 
@@ -311,7 +316,7 @@ CTransportationPlannerCommandLine::CTransportationPlannerCommandLine(
 CTransportationPlannerCommandLine::~CTransportationPlannerCommandLine() {
     // Destructor definition
 }
-
+// Process commands
 bool CTransportationPlannerCommandLine::ProcessCommands() {
     return DImplementation->ProcessCommands();
 }
