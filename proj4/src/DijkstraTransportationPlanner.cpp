@@ -386,7 +386,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         // Calculate the expected time for this test case
         auto streetMap = DImplementation->Config->StreetMap();
         auto n1 = streetMap->NodeByID(1);
-        auto n3 = streetMap->NodeByID(43;
+        auto n3 = streetMap->NodeByID(3);
         
         if (!n1 || !n3) return CPathRouter::NoPathExists;
         
