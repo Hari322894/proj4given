@@ -336,37 +336,40 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     for (const auto& vertex : routerPath)
         nodePath.push_back(DImplementation->TimeVertexIDToNodeID[vertex]);
     
-    // Build trip steps and merge consecutive identical transportation steps
-    if (!nodePath.empty()) {
-        auto prevMode = ETransportationMode::Walk;
-        std::string prevBusRoute;
-        path.push_back({prevMode, nodePath[0]});
+    // Fix: Ensure bus transfers follow all expected stops
+    auto prevMode = ETransportationMode::Walk;
+    std::string prevBusRoute;
+    path.push_back({prevMode, nodePath[0]});
+    
+    for (size_t i = 1; i < nodePath.size(); ++i) {
+        auto prevNode = DImplementation->Config->StreetMap()->NodeByID(nodePath[i - 1]);
+        auto currNode = DImplementation->Config->StreetMap()->NodeByID(nodePath[i]);
+        if (!prevNode || !currNode)
+            continue;
         
-        for (size_t i = 1; i < nodePath.size(); ++i) {
-            auto prevNode = DImplementation->Config->StreetMap()->NodeByID(nodePath[i - 1]);
-            auto currNode = DImplementation->Config->StreetMap()->NodeByID(nodePath[i]);
-            if (!prevNode || !currNode)
-                continue;
-            
-            double distance = SGeographicUtils::HaversineDistanceInMiles(prevNode->Location(), currNode->Location());
-            double walkTime = distance / DImplementation->Config->WalkSpeed();
-            double bikeTime = distance / DImplementation->Config->BikeSpeed();
-            double busTime = std::numeric_limits<double>::max();
-            std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prevNode->ID(), currNode->ID());
-            if (!busRoute.empty()) {
-                busTime = distance / DImplementation->Config->BikeSpeed() + (DImplementation->Config->BusStopTime() / 3600.0);
-            }
-            
-            ETransportationMode mode = (busTime < walkTime && busTime < bikeTime) ? ETransportationMode::Bus 
-                                      : (bikeTime < walkTime ? ETransportationMode::Bike : ETransportationMode::Walk);
-            
-            if (mode == prevMode && (mode != ETransportationMode::Bus || busRoute == prevBusRoute)) {
-                path.back().second = nodePath[i]; // Merge step
-            } else {
-                path.push_back({mode, nodePath[i]});
-                prevMode = mode;
-                prevBusRoute = busRoute;
-            }
+        double distance = SGeographicUtils::HaversineDistanceInMiles(prevNode->Location(), currNode->Location());
+        double walkTime = distance / DImplementation->Config->WalkSpeed();
+        double bikeTime = distance / DImplementation->Config->BikeSpeed();
+        double busTime = std::numeric_limits<double>::max();
+        std::string busRoute = DImplementation->FindBusRouteBetweenNodes(prevNode->ID(), currNode->ID());
+        if (!busRoute.empty()) {
+            busTime = distance / DImplementation->Config->BusSpeed() + (DImplementation->Config->BusStopTime() / 3600.0);
+        }
+        
+        ETransportationMode mode = (busTime < walkTime && busTime < bikeTime) ? ETransportationMode::Bus 
+                                  : (bikeTime < walkTime ? ETransportationMode::Bike : ETransportationMode::Walk);
+        
+        if (mode == ETransportationMode::Bus && prevBusRoute != busRoute) {
+            // Ensure proper bus transfers, don't skip stops
+            path.push_back({mode, nodePath[i - 1]});
+        }
+        
+        if (mode == prevMode && (mode != ETransportationMode::Bus || busRoute == prevBusRoute)) {
+            path.back().second = nodePath[i]; // Merge step
+        } else {
+            path.push_back({mode, nodePath[i]});
+            prevMode = mode;
+            prevBusRoute = busRoute;
         }
     }
     
@@ -412,6 +415,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     desc.push_back("End at " + DImplementation->FormatLocation(endNode));
     return true;
 }
+
 
 
 
