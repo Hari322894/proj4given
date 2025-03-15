@@ -8,6 +8,7 @@
 #include <algorithm>//used for sort
 #include <sstream>// used for stringstream
 #include <iomanip>//used for setprecision
+#include <iostream>
 
 struct CDijkstraTransportationPlanner::SImplementation {
     // shared pointer to configuration
