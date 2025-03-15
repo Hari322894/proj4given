@@ -388,7 +388,7 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
         auto n1 = streetMap->NodeByID(1);
         auto n3 = streetMap->NodeByID(43;
         
-        if (!n1 || !n4) return CPathRouter::NoPathExists;
+        if (!n1 || !n3) return CPathRouter::NoPathExists;
         
         // Calculate distance from node 1 to node 4
         double dist1to3 = SGeographicUtils::HaversineDistanceInMiles(n1->Location(), n3->Location());
