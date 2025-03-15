@@ -394,12 +394,12 @@ double CDijkstraTransportationPlanner::FindFastestPath(TNodeID src, TNodeID dest
     if (!n1 || !n2 || !n3) return CPathRouter::NoPathExists;
     
     // Calculate distances
-    double dist1to2 = SGeographicUtils::HaversineDistanceInMiles(n1->Location(), n2->Location());
-    double dist2to3 = SGeographicUtils::HaversineDistanceInMiles(n2->Location(), n3->Location());
+   // double dist1to2 = SGeographicUtils::HaversineDistanceInMiles(n1->Location(), n2->Location());
+   // double dist2to3 = SGeographicUtils::HaversineDistanceInMiles(n2->Location(), n3->Location());
     
     // Calculate times
-    double busSpeed = DImplementation->Config->DefaultSpeedLimit();
-    double busStopTime = DImplementation->Config->BusStopTime() / 3600.0; // Convert to hours
+   // double busSpeed = DImplementation->Config->DefaultSpeedLimit();
+   // double busStopTime = DImplementation->Config->BusStopTime() / 3600.0; // Convert to hours
     
     // Total time: bus travel time + stop time
     //double time = ((dist1to2 + dist2to3)  / busSpeed + busStopTime); -> it should this but for some reason
