@@ -6,16 +6,17 @@
 
 class DijkstraPathRouterTest : public ::testing::Test {
 protected:
+// Set up the test fixture.
     void SetUp() override {
         
-        router = std::make_unique<CDijkstraPathRouter>(); // init the router for each test
+        router = std::make_unique<CDijkstraPathRouter>(); 
     }
-
+// Tear down the test fixture.
     void TearDown() override {
         
         router.reset(); // clean up after every test
     }
-
+// Declare any objects you plan to use
     std::unique_ptr<CDijkstraPathRouter> router;
 };
 
