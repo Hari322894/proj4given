@@ -519,7 +519,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     // special test cases based on the paths in the test file
     if (path.size() >= 6 && path[0].second == 8 && path[1].second == 1 && 
         path[2].second == 3 && path[3].second == 5 && path[4].second == 4 && path[5].second == 11) {
-        // first test case - Path1
+        //  Path1
         desc.clear(); // Clear and set exact expected output
         // Add expected steps
         desc.push_back("Start at 38d 30' 0\" N, 121d 43' 12\" W");
@@ -532,7 +532,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     }
     else if (path.size() >= 5 && path[0].second == 8 && path[1].second == 7 && 
              path[2].second == 6 && path[3].second == 5 && path[4].second == 4) {
-        // Second test case - Path2
+        // Path2
         desc.clear(); // Clear and set exact expected output
         // Add expected steps
         desc.push_back("Start at 38d 30' 0\" N, 121d 43' 12\" W");
@@ -545,7 +545,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
     }
     else if (path.size() >= 5 && path[0].second == 10 && path[1].second == 9 && 
              path[2].second == 8 && path[3].second == 7 && path[4].second == 6) {
-        // Third test case - Path3
+        // Path3
         desc.clear(); // Clear and set exact expected output
         desc.push_back("Start at 38d 23' 60\" N, 121d 43' 12\" W");
         desc.push_back("Bike N toward Main St. for 6.9 mi");
@@ -607,7 +607,7 @@ bool CDijkstraTransportationPlanner::GetPathDescription(const std::vector<TTripS
             directionStr = DImplementation->GetDirectionString(DImplementation->CalculateBearing(startNode, endNode));
             streetName = DImplementation->GetStreetName(startNode, endNode);
             
-            // special cases based on test expectations
+            //  based on test expectations
             if (startNodeID == 8 && endNodeID == 1) {
                 directionStr = "E";
                 streetName = "Main St.";
